@@ -252,7 +252,10 @@ static inv_error_t MLSensorFusionSupervisor(double *magFB, long *accSF,
                         (CAL_RUN, inv_obj.compass_sensor_data,
                          deltaTime) == INV_SUCCESS) {
                         inv_obj.got_compass_bias = 1;
-
+                        inv_obj.compass_accuracy = 3;
+                        for(i=0; i<3; i++) {
+                            inv_obj.compass_bias_error[i] = 35;
+                        }
                         if (inv_obj.compass_state == SF_UNCALIBRATED)
                             inv_obj.compass_state = SF_STARTUP_SETTLE;
                         inv_set_compass_bias(inv_obj.compass_test_bias);
@@ -510,6 +513,11 @@ inv_error_t inv_reset_compass_calibration(void)
             ml_supervisor_cb.reset_advanced_compass_func();
     }
     MLUpdateCompassCalibration3DOF(CAL_RESET, inv_obj.compass_sensor_data, 1);
+
+    inv_obj.compass_bias_error[0] = P_INIT;
+    inv_obj.compass_bias_error[1] = P_INIT;
+    inv_obj.compass_bias_error[2] = P_INIT;
+    inv_obj.compass_accuracy = 0;
 
     inv_obj.got_compass_bias = 0;
     inv_obj.got_init_compass_bias = 0;
