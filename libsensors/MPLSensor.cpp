@@ -351,8 +351,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
         if (sen_mask != inv_get_dl_config()->requested_sensors) {
             LOGV("inv_set_mpu_sensors: %lx", sen_mask);
             rv = inv_set_mpu_sensors(sen_mask);
-            LOGE_IF(
-                    rv != INV_SUCCESS,
+            LOGE_IF(rv != INV_SUCCESS,
                     "error: unable to set MPL sensor power states (sens=%ld retcode = %d)",
                     sen_mask, rv);
         }
