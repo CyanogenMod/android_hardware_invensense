@@ -426,13 +426,14 @@ void MPLSensor::initMPL()
     }
 
     //check for the 9axis fusion library: if available load it and start 9x
-    void* h_dmp_lib=dlopen("libmpl.so", RTLD_LAZY);
+    void* h_dmp_lib=dlopen("libmpl.so", RTLD_NOW);
     if(h_dmp_lib) {
         const char* error;
+        error = dlerror();
         inv_error_t (*fp_inv_enable_9x_fusion)() =
               (inv_error_t(*)()) dlsym(h_dmp_lib, "inv_enable_9x_fusion");
         if((error = dlerror()) != NULL) {
-            LOGE("%s", error);
+            LOGE("%s %s", error, "inv_enable_9x_fusion");
         } else if ((*fp_inv_enable_9x_fusion)() != INV_SUCCESS) {
             LOGE( "Warning : 9 axis sensor fusion not available "
                   "- No compass detected.\n");
