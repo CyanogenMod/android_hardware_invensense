@@ -1496,9 +1496,9 @@ inv_error_t inv_get_accel_bias_float(float *data)
         return INV_ERROR_INVALID_PARAMETER;
     }
 
-    data[0] = (float)inv_obj.gyro_bias[3] / 65536.0f;
-    data[1] = (float)inv_obj.gyro_bias[4] / 65536.0f;
-    data[2] = (float)inv_obj.gyro_bias[5] / 65536.0f;
+    data[0] = (float)inv_obj.accel_bias[0] / 65536.0f;
+    data[1] = (float)inv_obj.accel_bias[1] / 65536.0f;
+    data[2] = (float)inv_obj.accel_bias[2] / 65536.0f;
 
     return result;
 }
