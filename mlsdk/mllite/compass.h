@@ -50,6 +50,8 @@ extern "C" {
     inv_error_t inv_get_compass_data(long *data);
     inv_error_t inv_set_compass_bias(long *bias);
     unsigned short inv_get_compass_id(void);
+    inv_error_t inv_set_compass_offset(void);
+    inv_error_t inv_compass_check_range(void);
     inv_error_t inv_compass_write_reg(unsigned char reg, unsigned char val);
     inv_error_t inv_compass_read_reg(unsigned char reg, unsigned char *val);
     inv_error_t inv_compass_read_scale(long *val);

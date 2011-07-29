@@ -239,6 +239,7 @@ extern "C" {
 #define INV_GOT_GESTURE                  0x0004
 
 #define INV_MOTION_STATE_CHANGE          0x0006
+#define INV_COMPASS_OFFSET_VALID         0x0007
 
 /*************************************************************************/
 /*  General                                                              */
@@ -307,6 +308,7 @@ struct inv_obj_t {
         long compass_test_bias[3];
         long compass_test_scale[3];
         long compass_asa[3];
+        long compass_offsets[3];
 
         long compass_bias_error[3];
 
@@ -378,7 +380,7 @@ struct inv_obj_t {
         inv_error_t (*external_slave_callback)(struct inv_obj_t *);
         int  compass_accuracy;
 
-        unsigned short flags[7];
+        unsigned short flags[8];
         unsigned short suspend;
 
         long no_motion_threshold;

@@ -371,6 +371,75 @@ inv_error_t inv_compass_read_scale(long *val)
     return result;
 }
 
+inv_error_t inv_set_compass_offset(void)
+{
+    struct ext_slave_config config;
+    unsigned char data[3];
+    inv_error_t result;
+
+    config.key = MPU_SLAVE_OFFSET_VALS;
+    config.len = 3;
+    config.apply = TRUE;
+    config.data = data;
+
+    if(inv_obj.flags[INV_COMPASS_OFFSET_VALID]) {
+        /* push stored values */
+        data[0] = (char)inv_obj.compass_offsets[0];
+        data[1] = (char)inv_obj.compass_offsets[1];
+        data[2] = (char)inv_obj.compass_offsets[2];
+        MPL_LOGI("push compass offsets %hhd, %hhd, %hhd", data[0], data[1], data[2]);
+        result = inv_mpu_config_compass(inv_get_dl_config(),
+                                        inv_get_serial_handle(),
+                                        inv_get_serial_handle(), &config);
+    } else {
+        /* compute new values and store them */
+        result = inv_mpu_get_compass_config(inv_get_dl_config(),
+                                            inv_get_serial_handle(),
+                                            inv_get_serial_handle(), &config);
+        MPL_LOGI("pulled compass offsets %hhd %hhd %hhd", data[0], data[1], data[2]);
+        if(result == INV_SUCCESS) {
+            inv_obj.flags[INV_COMPASS_OFFSET_VALID] = 1;
+            inv_obj.compass_offsets[0] = data[0];
+            inv_obj.compass_offsets[1] = data[1];
+            inv_obj.compass_offsets[2] = data[2];
+            inv_reset_compass_calibration();
+        }
+    }
+
+    if (result) {
+        LOG_RESULT_LOCATION(result);
+        return result;
+    }
+
+    return result;
+}
+
+inv_error_t inv_compass_check_range(void)
+{
+    struct ext_slave_config config;
+    unsigned char data[3];
+    inv_error_t result;
+
+    config.key = MPU_SLAVE_RANGE_CHECK;
+    config.len = 3;
+    config.apply = TRUE;
+    config.data = data;
+
+    result = inv_mpu_get_compass_config(inv_get_dl_config(),
+                                        inv_get_serial_handle(),
+                                        inv_get_serial_handle(), &config);
+    if (result) {
+        LOG_RESULT_LOCATION(result);
+        return result;
+    }
+
+    if(data[0] || data[1] || data[2]) {
+        /* some value clipped */
+        return INV_ERROR_COMPASS_DATA_ERROR;
+    }
+    return INV_SUCCESS;
+}
+
 /**
  * @}
  */

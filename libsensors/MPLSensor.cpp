@@ -372,6 +372,12 @@ void MPLSensor::setPowerStates(int enabled_sensors)
         }
 
         if (!mDmpStarted) {
+            if (mHaveGoodMpuCal) {
+                rv = inv_store_calibration();
+                LOGE_IF(rv != INV_SUCCESS,
+                        "error: unable to store MPL calibration file");
+                mHaveGoodMpuCal = false;
+            }
             LOGV("Starting DMP");
             rv = inv_dmp_start();
             LOGE_IF(rv != INV_SUCCESS, "unable to start dmp");
@@ -389,12 +395,6 @@ void MPLSensor::setPowerStates(int enabled_sensors)
             ioctl(mIrqFds.valueFor(TIMERIRQ_FD), TIMERIRQ_STOP, 0);
         }
         clearIrqData(irq_set);
-        if (mHaveGoodMpuCal) {
-            rv = inv_store_calibration();
-            LOGE_IF(rv != INV_SUCCESS,
-                    "error: unable to store MPL calibration file");
-            mHaveGoodMpuCal = false;
-        }
 
         mDmpStarted = false;
         mPollTime = -1;
@@ -532,7 +532,7 @@ void MPLSensor::cbOnMotion(uint16_t val)
     //after the first no motion, the gyro should be calibrated well
     if (val == 2) {
         mMpuAccuracy = SENSOR_STATUS_ACCURACY_HIGH;
-        if (mEnabled & (1 << MPLSensor::Gyro)) {
+        if ((inv_get_dl_config()->requested_sensors) & INV_THREE_AXIS_GYRO) {
             //if gyros are on and we got a no motion, set a flag
             // indicating that the cal file can be written.
             mHaveGoodMpuCal = true;

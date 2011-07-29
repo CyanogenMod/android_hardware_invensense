@@ -39,7 +39,7 @@ extern "C" {
     Defines
 */
 #define INV_CAL_ACCEL_LEN    (12)
-#define INV_CAL_COMPASS_LEN  (555)
+#define INV_CAL_COMPASS_LEN  (555 + 5)
 #define INV_CAL_HDR_LEN      (6)
 #define INV_CAL_CHK_LEN      (4)
 

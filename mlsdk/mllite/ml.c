@@ -480,6 +480,7 @@ inv_error_t inv_reset_motion(void)
         return result;
     }
 
+    inv_set_motion_state(INV_MOTION);
     return result;
 }
 
