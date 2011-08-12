@@ -425,7 +425,7 @@ void MPLSensor::initMPL()
     }
 
     //check for the 9axis fusion library: if available load it and start 9x
-    void* h_dmp_lib=dlopen("libmpl.so", RTLD_NOW);
+    void* h_dmp_lib=dlopen("libinvensense_mpl.so", RTLD_NOW);
     if(h_dmp_lib) {
         const char* error;
         error = dlerror();
