@@ -44,13 +44,13 @@ public:
 
     enum
     {
-        RotationVector = 0,
-        LinearAccel,
-        Gravity,
-        Gyro,
+        Gyro=0,
         Accelerometer,
         MagneticField,
         Orientation,
+        RotationVector,
+        LinearAccel,
+        Gravity,
         numSensors
     };
 
@@ -66,6 +66,7 @@ public:
     virtual void handlePowerEvent();
     virtual void sleepEvent();
     virtual void wakeEvent();
+    int populateSensorList(struct sensor_t *list, int len);
     void cbOnMotion(uint16_t);
     void cbProcData();
 
@@ -122,6 +123,15 @@ private:
     long int mOldEnabledMask;
     android::KeyedVector<int, int> mIrqFds;
 
+    /* added for dynamic get sensor list              */
+    bool mNineAxisEnabled;
+    void fillAccel(unsigned char accel, struct sensor_t *list);
+    void fillCompass(unsigned char compass, struct sensor_t *list);
+    void fillGyro(const char* gyro, struct sensor_t *list);
+    void fillRV(struct sensor_t *list);
+    void fillOrientation(struct sensor_t *list);
+    void fillGravity(struct sensor_t *list);
+    void fillLinearAccel(struct sensor_t *list);
 };
 
 void setCallbackObject(MPLSensor*);

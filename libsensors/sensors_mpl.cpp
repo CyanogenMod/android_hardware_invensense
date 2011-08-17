@@ -44,23 +44,6 @@
 
 #define LIGHT_SENSOR_POLLTIME    2000000000
 
-#define SENSORS_ROTATION_VECTOR  (1<<ID_RV)
-#define SENSORS_LINEAR_ACCEL     (1<<ID_LA)
-#define SENSORS_GRAVITY          (1<<ID_GR)
-#define SENSORS_GYROSCOPE        (1<<ID_GY)
-#define SENSORS_ACCELERATION     (1<<ID_A)
-#define SENSORS_MAGNETIC_FIELD   (1<<ID_M)
-#define SENSORS_ORIENTATION      (1<<ID_O)
-
-#define SENSORS_ROTATION_VECTOR_HANDLE  (ID_RV)
-#define SENSORS_LINEAR_ACCEL_HANDLE     (ID_LA)
-#define SENSORS_GRAVITY_HANDLE          (ID_GR)
-#define SENSORS_GYROSCOPE_HANDLE        (ID_GY)
-#define SENSORS_ACCELERATION_HANDLE     (ID_A)
-#define SENSORS_MAGNETIC_FIELD_HANDLE   (ID_M)
-#define SENSORS_ORIENTATION_HANDLE      (ID_O)
-
-
 #define AKM_FTRACE 0
 #define AKM_DEBUG 0
 #define AKM_DATA 0
@@ -68,39 +51,8 @@
 /*****************************************************************************/
 
 /* The SENSORS Module */
-static const struct sensor_t sSensorList[] = {
-      { "MPL rotation vector",
-        "Invensense",
-        1, SENSORS_ROTATION_VECTOR_HANDLE,
-        SENSOR_TYPE_ROTATION_VECTOR, 10240.0f, 1.0f, 0.5f, 20000,{ } },
-      { "MPL linear accel",
-        "Invensense",
-        1, SENSORS_LINEAR_ACCEL_HANDLE,
-        SENSOR_TYPE_LINEAR_ACCELERATION, 10240.0f, 1.0f, 0.5f, 20000,{ } },
-      { "MPL gravity",
-        "Invensense",
-        1, SENSORS_GRAVITY_HANDLE,
-        SENSOR_TYPE_GRAVITY, 10240.0f, 1.0f, 0.5f, 20000,{ } },
-      { "MPL Gyro",
-        "Invensense",
-        1, SENSORS_GYROSCOPE_HANDLE,
-        SENSOR_TYPE_GYROSCOPE, 10240.0f, 1.0f, 0.5f, 20000,{ } },
-      { "MPL accel",
-        "Invensense",
-        1, SENSORS_ACCELERATION_HANDLE,
-        SENSOR_TYPE_ACCELEROMETER, 10240.0f, 1.0f, 0.5f, 20000,{ } },
-      { "MPL magnetic field",
-        "Invensense",
-        1, SENSORS_MAGNETIC_FIELD_HANDLE,
-        SENSOR_TYPE_MAGNETIC_FIELD, 10240.0f, 1.0f, 0.5f, 20000,{ } },
-      { "MPL Orientation (android deprecated format)",
-          "Invensense",
-          1, SENSORS_ORIENTATION_HANDLE,
-          SENSOR_TYPE_ORIENTATION, 360.0f, 1.0f, 9.7f, 20000,{ } },
-
-
-};
-
+static struct sensor_t sSensorList[7];
+static int numSensors=7;
 
 static int open_sensors(const struct hw_module_t* module, const char* id,
                         struct hw_device_t** device);
@@ -110,7 +62,7 @@ static int sensors__get_sensors_list(struct sensors_module_t* module,
                                      struct sensor_t const** list)
 {
     *list = sSensorList;
-    return ARRAY_SIZE(sSensorList);
+    return numSensors;
 }
 
 static struct hw_module_methods_t sensors_module_methods = {
@@ -177,6 +129,7 @@ sensors_poll_context_t::sensors_poll_context_t()
     FUNC_LOG;
     MPLSensor* p_mplsen = new MPLSensor();
     setCallbackObject(p_mplsen); //setup the callback object for handing mpl callbacks
+    numSensors = p_mplsen->populateSensorList(sSensorList, sizeof(sSensorList));
 
     mSensors[mpl] = p_mplsen;
     mPollFds[mpl].fd = mSensors[mpl]->getFd();

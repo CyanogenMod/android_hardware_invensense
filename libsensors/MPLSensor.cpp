@@ -54,6 +54,7 @@ extern "C" {
 }
 
 #include "mlcontrol.h"
+#include "sensor_params.h"
 
 #define EXTRA_VERBOSE (0)
 #define FUNC_LOG LOGV("%s", __PRETTY_FUNCTION__)
@@ -62,6 +63,33 @@ extern "C" {
 #define ALL_MPL_SENSORS_NP (INV_THREE_AXIS_ACCEL | INV_THREE_AXIS_COMPASS | INV_THREE_AXIS_GYRO)
 
 #define CALL_MEMBER_FN(pobject,ptrToMember)  ((pobject)->*(ptrToMember))
+
+/******************************************/
+
+/* Base values for the sensor list, these need to be in the order defined in MPLSensor.h */
+static struct sensor_t sSensorList[] =
+    { { "MPL Gyro", "Invensense", 1,
+         SENSORS_GYROSCOPE_HANDLE,
+         SENSOR_TYPE_GYROSCOPE, 2000.0f, 1.0f, 0.5f, 10000, { } },
+      { "MPL accel", "Invensense", 1,
+         SENSORS_ACCELERATION_HANDLE,
+         SENSOR_TYPE_ACCELEROMETER, 10240.0f, 1.0f, 0.5f, 10000, { } },
+      { "MPL magnetic field", "Invensense", 1,
+         SENSORS_MAGNETIC_FIELD_HANDLE,
+         SENSOR_TYPE_MAGNETIC_FIELD, 10240.0f, 1.0f, 0.5f, 10000, { } },
+      { "MPL Orientation (android deprecated format)", "Invensense", 1,
+         SENSORS_ORIENTATION_HANDLE,
+         SENSOR_TYPE_ORIENTATION, 360.0f, 1.0f, 9.7f, 10000, { } },
+      { "MPL rotation vector", "Invensense", 1,
+         SENSORS_ROTATION_VECTOR_HANDLE,
+         SENSOR_TYPE_ROTATION_VECTOR, 10240.0f, 1.0f, 0.5f, 10000, { } },
+      { "MPL linear accel", "Invensense", 1,
+         SENSORS_LINEAR_ACCEL_HANDLE,
+         SENSOR_TYPE_LINEAR_ACCELERATION, 10240.0f, 1.0f, 0.5f, 10000, { } },
+      { "MPL gravity", "Invensense", 1,
+         SENSORS_GRAVITY_HANDLE,
+         SENSOR_TYPE_GRAVITY, 10240.0f, 1.0f, 0.5f, 10000, { } },
+};
 
 /* ***************************************************************************
  * MPL interface misc.
@@ -126,6 +154,11 @@ MPLSensor::MPLSensor() :
     LOGV_IF(EXTRA_VERBOSE, "MPLSensor constructor: numSensors = %d", numSensors);
 
     mForceSleep = false;
+
+    /* used for identifying whether 9axis is enabled or not             */
+    /* this variable will be changed in initMPL() when libmpl is loaded */
+    /* sensor list will be changed based on this variable               */
+    mNineAxisEnabled = false;
 
     for (i = 0; i < ARRAY_SIZE(mPollFds); i++) {
         mPollFds[i].fd = -1;
@@ -436,10 +469,14 @@ void MPLSensor::initMPL()
         } else if ((*fp_inv_enable_9x_fusion)() != INV_SUCCESS) {
             LOGE( "Warning : 9 axis sensor fusion not available "
                   "- No compass detected.\n");
+        } else {
+            /*  9axis is loaded and enabled                            */
+            /*  this variable is used for coming up with sensor list   */
+            mNineAxisEnabled = true;
         }
     } else {
         const char* error = dlerror();
-        LOGE("libmpl.so not found, 9x sensor fusion disabled (%s)",error);
+        LOGE("libinvensense_mpl.so not found, 9x sensor fusion disabled (%s)",error);
     }
 
     mldl_cfg = inv_get_dl_config();
@@ -1072,3 +1109,245 @@ void MPLSensor::wakeEvent()
     mForceSleep = false;
     pthread_mutex_unlock(&mMplMutex);
 }
+
+/** fill in the sensor list based on which sensors are configured.
+ *  return the number of configured sensors.
+ *  parameter list must point to a memory region of at least 7*sizeof(sensor_t)
+ *  parameter len gives the length of the buffer pointed to by list
+ */
+
+int MPLSensor::populateSensorList(struct sensor_t *list, int len)
+{
+    int numsensors;
+
+    if(len < 7*sizeof(sensor_t)) {
+        LOGE("sensor list too small, not populating.");
+        return 0;
+    }
+
+    /* fill in the base values */
+    memcpy(list, sSensorList, sizeof (struct sensor_t) * 7);
+
+    /* get platform config  */
+    struct mldl_cfg *mldl_cfg = inv_get_dl_config();
+    if( mldl_cfg == NULL )
+    {
+        LOGE("Can not get mldl_cfg handle\n");
+        return 0;
+    }
+
+    /* first add gyro, accel and compass to the list */
+
+    /* fill in accel values                          */
+    fillAccel(mldl_cfg->accel->id, list);
+
+    /* fill in compass values                        */
+    fillCompass(mldl_cfg->compass->id, list);
+
+    /* fill in gyro values                           */
+    fillGyro(MPU_NAME, list);
+
+    if(mNineAxisEnabled)
+    {
+        numsensors = 7;
+        /* all sensors will be added to the list     */
+        /* fill in orientation values	             */
+        fillOrientation(list);
+
+        /* fill in rotation vector values	     */
+        fillRV(list);
+
+        /* fill in gravity values			     */
+        fillGravity(list);
+
+        /* fill in Linear accel values            */
+        fillLinearAccel(list);
+    } else {
+        /* no 9-axis sensors, zero fill that part of the list */
+        numsensors = 3;
+        memset(list+3, 0, 4*sizeof(struct sensor_t));
+    }
+
+    return numsensors;
+}
+
+void MPLSensor::fillAccel(unsigned char accel, struct sensor_t *list)
+{
+    switch (accel) {
+    case ACCEL_ID_LIS331:
+        list[Accelerometer].maxRange = ACCEL_LIS331_RANGE;
+        list[Accelerometer].resolution = ACCEL_LIS331_RESOLUTION;
+        list[Accelerometer].power = ACCEL_LIS331_POWER;
+        break;
+
+    case ACCEL_ID_LIS3DH:
+        list[Accelerometer].maxRange = ACCEL_LIS3DH_RANGE;
+        list[Accelerometer].resolution = ACCEL_LIS3DH_RESOLUTION;
+        list[Accelerometer].power = ACCEL_LIS3DH_POWER;
+        break;
+
+    case ACCEL_ID_KXSD9:
+        list[Accelerometer].maxRange = ACCEL_KXSD9_RANGE;
+        list[Accelerometer].resolution = ACCEL_KXSD9_RESOLUTION;
+        list[Accelerometer].power = ACCEL_KXSD9_POWER;
+        break;
+
+    case ACCEL_ID_KXTF9:
+        list[Accelerometer].maxRange = ACCEL_KXTF9_RANGE;
+        list[Accelerometer].resolution = ACCEL_KXTF9_RESOLUTION;
+        list[Accelerometer].power = ACCEL_KXTF9_POWER;
+        break;
+
+    case ACCEL_ID_BMA150:
+        list[Accelerometer].maxRange = ACCEL_BMA150_RANGE;
+        list[Accelerometer].resolution = ACCEL_BMA150_RESOLUTION;
+        list[Accelerometer].power = ACCEL_BMA150_POWER;
+        break;
+
+    case ACCEL_ID_BMA222:
+        list[Accelerometer].maxRange = ACCEL_BMA222_RANGE;
+        list[Accelerometer].resolution = ACCEL_BMA222_RESOLUTION;
+        list[Accelerometer].power = ACCEL_BMA222_POWER;
+        break;
+
+    case ACCEL_ID_BMA250:
+        list[Accelerometer].maxRange = ACCEL_BMA250_RANGE;
+        list[Accelerometer].resolution = ACCEL_BMA250_RESOLUTION;
+        list[Accelerometer].power = ACCEL_BMA250_POWER;
+        break;
+
+    case ACCEL_ID_ADXL34X:
+        list[Accelerometer].maxRange = ACCEL_ADXL34X_RANGE;
+        list[Accelerometer].resolution = ACCEL_ADXL34X_RESOLUTION;
+        list[Accelerometer].power = ACCEL_ADXL34X_POWER;
+        break;
+
+    case ACCEL_ID_MMA8450:
+        list[Accelerometer].maxRange = ACCEL_MMA8450_RANGE;
+        list[Accelerometer].maxRange = ACCEL_MMA8450_RANGE;
+        list[Accelerometer].maxRange = ACCEL_MMA8450_RANGE;
+        break;
+
+    case ACCEL_ID_MMA845X:
+        list[Accelerometer].maxRange = ACCEL_MMA845X_RANGE;
+        list[Accelerometer].resolution = ACCEL_MMA845X_RESOLUTION;
+        list[Accelerometer].power = ACCEL_MMA845X_POWER;
+        break;
+
+    case ACCEL_ID_MPU6050:
+        list[Accelerometer].maxRange = ACCEL_MPU6050_RANGE;
+        list[Accelerometer].resolution = ACCEL_MPU6050_RESOLUTION;
+        list[Accelerometer].power = ACCEL_MPU6050_POWER;
+        break;
+    default:
+        LOGE("unknown accel id -- accel params will be wrong.");
+        break;
+    }
+}
+
+void MPLSensor::fillCompass(unsigned char compass, struct sensor_t *list)
+{
+    switch (compass) {
+    case COMPASS_ID_AK8975:
+        list[MagneticField].maxRange = COMPASS_AKM8975_RANGE;
+        list[MagneticField].resolution = COMPASS_AKM8975_RESOLUTION;
+        list[MagneticField].power = COMPASS_AKM8975_POWER;
+        break;
+    case COMPASS_ID_AMI30X:
+        list[MagneticField].maxRange = COMPASS_AMI30X_RANGE;
+        list[MagneticField].resolution = COMPASS_AMI30X_RESOLUTION;
+        list[MagneticField].power = COMPASS_AMI30X_POWER;
+        break;
+    case COMPASS_ID_AMI306:
+        list[MagneticField].maxRange = COMPASS_AMI306_RANGE;
+        list[MagneticField].resolution = COMPASS_AMI306_RESOLUTION;
+        list[MagneticField].power = COMPASS_AMI306_POWER;
+        break;
+    case COMPASS_ID_YAS529:
+        list[MagneticField].maxRange = COMPASS_YAS529_RANGE;
+        list[MagneticField].resolution = COMPASS_AMI306_RESOLUTION;
+        list[MagneticField].power = COMPASS_AMI306_POWER;
+        break;
+    case COMPASS_ID_YAS530:
+        list[MagneticField].maxRange = COMPASS_YAS530_RANGE;
+        list[MagneticField].resolution = COMPASS_YAS530_RESOLUTION;
+        list[MagneticField].power = COMPASS_YAS530_POWER;
+        break;
+    case COMPASS_ID_HMC5883:
+        list[MagneticField].maxRange = COMPASS_HMC5883_RANGE;
+        list[MagneticField].resolution = COMPASS_HMC5883_RESOLUTION;
+        list[MagneticField].power = COMPASS_HMC5883_POWER;
+        break;
+    case COMPASS_ID_MMC314X:
+        list[MagneticField].maxRange = COMPASS_MMC314X_RANGE;
+        list[MagneticField].resolution = COMPASS_MMC314X_RESOLUTION;
+        list[MagneticField].power = COMPASS_MMC314X_POWER;
+        break;
+    case COMPASS_ID_HSCDTD002B:
+        list[MagneticField].maxRange = COMPASS_HSCDTD002B_RANGE;
+        list[MagneticField].resolution = COMPASS_HSCDTD002B_RESOLUTION;
+        list[MagneticField].power = COMPASS_HSCDTD002B_POWER;
+        break;
+    case COMPASS_ID_HSCDTD004A:
+        list[MagneticField].maxRange = COMPASS_HSCDTD004A_RANGE;
+        list[MagneticField].resolution = COMPASS_HSCDTD004A_RESOLUTION;
+        list[MagneticField].power = COMPASS_HSCDTD004A_POWER;
+        break;
+    default:
+        LOGE("unknown compass id -- compass parameters will be wrong");
+    }
+}
+
+void MPLSensor::fillGyro(const char* gyro, struct sensor_t *list)
+{
+    if ((gyro != NULL) && (strcmp(gyro, "mpu3050") == 0)) {
+        list[Gyro].maxRange = GYRO_MPU3050_RANGE;
+        list[Gyro].resolution = GYRO_MPU3050_RESOLUTION;
+        list[Gyro].power = GYRO_MPU3050_POWER;
+    } else {
+        list[Gyro].maxRange = GYRO_MPU6050_RANGE;
+        list[Gyro].resolution = GYRO_MPU6050_RESOLUTION;
+        list[Gyro].power = GYRO_MPU6050_POWER;
+    }
+    return;
+}
+
+
+/* fillRV depends on values of accel and compass in the list	*/
+void MPLSensor::fillRV(struct sensor_t *list)
+{
+    /* compute power on the fly */
+    list[RotationVector].power = list[Gyro].power + list[Accelerometer].power
+            + list[MagneticField].power;
+    list[RotationVector].resolution = .00001;
+    list[RotationVector].maxRange = 1.0;
+    return;
+}
+
+void MPLSensor::fillOrientation(struct sensor_t *list)
+{
+    list[Orientation].power = list[Gyro].power + list[Accelerometer].power
+            + list[MagneticField].power;
+    list[Orientation].resolution = .00001;
+    list[Orientation].maxRange = 360.0;
+    return;
+}
+
+void MPLSensor::fillGravity( struct sensor_t *list)
+{
+    list[Gravity].power = list[Gyro].power + list[Accelerometer].power
+            + list[MagneticField].power;
+    list[Gravity].resolution = .00001;
+    list[Gravity].maxRange = 9.81;
+    return;
+}
+
+void MPLSensor::fillLinearAccel(struct sensor_t *list)
+{
+    list[Gravity].power = list[Gyro].power + list[Accelerometer].power
+            + list[MagneticField].power;
+    list[Gravity].resolution = list[Accelerometer].resolution;
+    list[Gravity].maxRange = list[Accelerometer].maxRange;
+    return;
+}
+
