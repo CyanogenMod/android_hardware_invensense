@@ -16,7 +16,7 @@
  */
 /**********Removed the gesture related code from this file for Google code check modified by Meenakshi Ramamoorthi on May 31st  **********/
 
-#define LOG_NDEBUG 0
+#define LOG_NDEBUG 1
 #define LOG_TAG "Sensors"
 #define FUNC_LOG LOGV("%s", __PRETTY_FUNCTION__)
 
@@ -197,7 +197,7 @@ int sensors_poll_context_t::setDelay(int handle, int64_t ns)
 
 int sensors_poll_context_t::pollEvents(sensors_event_t* data, int count)
 {
-    //FUNC_LOG;
+    FUNC_LOG;
     int nbEvents = 0;
     int n = 0;
     int polltime = -1;
@@ -289,7 +289,7 @@ static int poll__setDelay(struct sensors_poll_device_t *dev,
 static int poll__poll(struct sensors_poll_device_t *dev,
                       sensors_event_t* data, int count)
 {
-    //FUNC_LOG;
+    FUNC_LOG;
     sensors_poll_context_t *ctx = (sensors_poll_context_t *)dev;
     return ctx->pollEvents(data, count);
 }

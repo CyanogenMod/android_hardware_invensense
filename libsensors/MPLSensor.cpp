@@ -45,6 +45,8 @@
 #include "mldl.h"
 
 #include "mpu.h"
+#include "accel.h"
+#include "compass.h"
 #include "kernel/timerirq.h"
 #include "kernel/mpuirq.h"
 #include "kernel/slaveirq.h"
@@ -68,29 +70,30 @@ extern "C" {
 
 /* Base values for the sensor list, these need to be in the order defined in MPLSensor.h */
 static struct sensor_t sSensorList[] =
-    { { "MPL Gyro", "Invensense", 1,
+    { { "MPL Gyroscope", "Invensense", 1,
          SENSORS_GYROSCOPE_HANDLE,
          SENSOR_TYPE_GYROSCOPE, 2000.0f, 1.0f, 0.5f, 10000, { } },
-      { "MPL accel", "Invensense", 1,
+      { "MPL Accelerometer", "Invensense", 1,
          SENSORS_ACCELERATION_HANDLE,
          SENSOR_TYPE_ACCELEROMETER, 10240.0f, 1.0f, 0.5f, 10000, { } },
-      { "MPL magnetic field", "Invensense", 1,
+      { "MPL Magnetic Field", "Invensense", 1,
          SENSORS_MAGNETIC_FIELD_HANDLE,
          SENSOR_TYPE_MAGNETIC_FIELD, 10240.0f, 1.0f, 0.5f, 10000, { } },
-      { "MPL Orientation (android deprecated format)", "Invensense", 1,
+      { "MPL Orientation", "Invensense", 1,
          SENSORS_ORIENTATION_HANDLE,
          SENSOR_TYPE_ORIENTATION, 360.0f, 1.0f, 9.7f, 10000, { } },
-      { "MPL rotation vector", "Invensense", 1,
+      { "MPL Rotation Vector", "Invensense", 1,
          SENSORS_ROTATION_VECTOR_HANDLE,
          SENSOR_TYPE_ROTATION_VECTOR, 10240.0f, 1.0f, 0.5f, 10000, { } },
-      { "MPL linear accel", "Invensense", 1,
+      { "MPL Linear Acceleration", "Invensense", 1,
          SENSORS_LINEAR_ACCEL_HANDLE,
          SENSOR_TYPE_LINEAR_ACCELERATION, 10240.0f, 1.0f, 0.5f, 10000, { } },
-      { "MPL gravity", "Invensense", 1,
+      { "MPL Gravity", "Invensense", 1,
          SENSORS_GRAVITY_HANDLE,
          SENSOR_TYPE_GRAVITY, 10240.0f, 1.0f, 0.5f, 10000, { } },
 };
 
+static unsigned long long irq_timestamp = 0;
 /* ***************************************************************************
  * MPL interface misc.
  */
@@ -137,14 +140,15 @@ void setCallbackObject(MPLSensor* gbpt)
 #define RV_ENABLED ((1<<ID_RV) & enabled_sensors)
 
 MPLSensor::MPLSensor() :
-    SensorBase(NULL, NULL), mEnabled(0), mPendingMask(0), mMpuAccuracy(0),
-            mNewData(0), mDmpStarted(false),
-            mMplMutex(PTHREAD_MUTEX_INITIALIZER),
+    SensorBase(NULL, NULL),
+            mMpuAccuracy(0), mNewData(0),
+            mDmpStarted(false),
             mMasterSensorMask(INV_ALL_SENSORS),
             mLocalSensorMask(ALL_MPL_SENSORS_NP), mPollTime(-1),
             mCurFifoRate(-1), mHaveGoodMpuCal(false),
             mUseTimerIrqAccel(false), mUsetimerIrqCompass(true),
-            mUseTimerirq(false), mSampleCount(0)
+            mUseTimerirq(false), mSampleCount(0),
+            mEnabled(0), mPendingMask(0)
 {
     FUNC_LOG;
     inv_error_t rv;
@@ -152,6 +156,8 @@ MPLSensor::MPLSensor() :
     char *port = NULL;
 
     LOGV_IF(EXTRA_VERBOSE, "MPLSensor constructor: numSensors = %d", numSensors);
+
+    pthread_mutex_init(&mMplMutex, NULL);
 
     mForceSleep = false;
 
@@ -205,7 +211,7 @@ MPLSensor::MPLSensor() :
     if ((accel_fd == -1) && (timer_fd != -1)) {
         //no accel irq and timer available
         mUseTimerIrqAccel = true;
-        LOGD("MPLSensor falling back to timerirq for accel data");
+        //LOGD("MPLSensor falling back to timerirq for accel data");
     }
 
     memset(mPendingEvents, 0, sizeof(mPendingEvents));
@@ -295,6 +301,7 @@ MPLSensor::~MPLSensor()
         LOGD("Error : could not close the serial port");
     }
     pthread_mutex_unlock(&mMplMutex);
+    pthread_mutex_destroy(&mMplMutex);
 }
 
 /* clear any data from our various filehandles */
@@ -313,6 +320,7 @@ void MPLSensor::clearIrqData(bool* irq_set)
             nread = read(cur_fd, &irqdata, sizeof(irqdata));
             if (nread > 0) {
                 irq_set[i] = true;
+                irq_timestamp = irqdata.irqtime;
                 //LOGV_IF(EXTRA_VERBOSE, "irq: %d %d (%d)", i, irqdata.interruptcount, j++);
             }
         }
@@ -858,7 +866,7 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
 {
     FUNC_LOG;
     /* LOGV_IF(EXTRA_VERBOSE, */
-    LOGE(" setDelay handle: %d rate %d", handle, (int) (ns / 1000000LL));
+    LOGD(" setDelay handle: %d rate %d", handle, (int) (ns / 1000000LL));
     int what = -1;
     switch (handle) {
     case ID_A:
@@ -927,7 +935,7 @@ int MPLSensor::update_delay()
             rate = 1;
 
         if (rate != mCurFifoRate) {
-            LOGV("set fifo rate: %d %llu", rate, wanted);
+            LOGD("set fifo rate: %d %llu", rate, wanted);
             inv_error_t res; // = inv_dmp_stop();
             res = inv_set_fifo_rate(rate);
             LOGE_IF(res != INV_SUCCESS, "error setting FIFO rate");
@@ -1006,13 +1014,14 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
         return 0;
     }
     mNewData = 0;
-    int64_t tt = now_ns();
+    
+    /* google timestamp */
     pthread_mutex_lock(&mMplMutex);
     for (int i = 0; i < numSensors; i++) {
         if (mEnabled & (1 << i)) {
             CALL_MEMBER_FN(this,mHandlers[i])(mPendingEvents + i,
                                               &mPendingMask, i);
-            mPendingEvents[i].timestamp = tt;
+	    mPendingEvents[i].timestamp = irq_timestamp;
         }
     }
 
@@ -1128,21 +1137,23 @@ int MPLSensor::populateSensorList(struct sensor_t *list, int len)
     /* fill in the base values */
     memcpy(list, sSensorList, sizeof (struct sensor_t) * 7);
 
-    /* get platform config  */
-    struct mldl_cfg *mldl_cfg = inv_get_dl_config();
-    if( mldl_cfg == NULL )
-    {
-        LOGE("Can not get mldl_cfg handle\n");
-        return 0;
-    }
-
     /* first add gyro, accel and compass to the list */
 
     /* fill in accel values                          */
-    fillAccel(mldl_cfg->accel->id, list);
+    unsigned short accelId = inv_get_accel_id();
+    if(accelId == 0)
+    {
+	LOGE("Can not get accel id");
+    }   
+    fillAccel(accelId, list);
 
     /* fill in compass values                        */
-    fillCompass(mldl_cfg->compass->id, list);
+    unsigned short compassId = inv_get_compass_id();
+    if(compassId == 0)
+    {
+	LOGE("Can not get compass id");
+    }  
+    fillCompass(compassId, list);
 
     /* fill in gyro values                           */
     fillGyro(MPU_NAME, list);

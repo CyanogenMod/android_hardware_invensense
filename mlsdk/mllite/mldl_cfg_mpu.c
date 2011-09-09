@@ -222,8 +222,6 @@ int inv_mpu_open(struct mldl_cfg *mldl_cfg,
         LOG_RESULT_LOCATION(result);
         return result;
     }
-    mpu_print_cfg(mldl_cfg);
-
     return result;
 }
 
@@ -260,7 +258,6 @@ int inv_mpu_resume(struct mldl_cfg* mldl_cfg,
 {
     int result;
     
-    mpu_print_cfg(mldl_cfg);
     mldl_cfg->requested_sensors = sensors;
     result = ioctl((int)mlsl_handle, MPU_SET_MPU_CONFIG, mldl_cfg);
     if (result) {
@@ -277,7 +274,7 @@ int inv_mpu_resume(struct mldl_cfg* mldl_cfg,
         LOG_RESULT_LOCATION(result);
         return result;
     }
-    MPL_LOGI("%s: Resuming to %04lx\n", __func__, mldl_cfg->requested_sensors);
+    //MPL_LOGI("%s: Resuming to %04lx\n", __func__, mldl_cfg->requested_sensors);
 
     return result;
 }
@@ -294,8 +291,8 @@ int inv_mpu_suspend(struct mldl_cfg *mldl_cfg,
     unsigned long requested = mldl_cfg->requested_sensors;
 
     mldl_cfg->requested_sensors = (~sensors) & INV_ALL_SENSORS;
-    MPL_LOGI("%s: suspending sensors to %04lx\n", __func__,
-             mldl_cfg->requested_sensors);
+    //MPL_LOGI("%s: suspending sensors to %04lx\n", __func__,
+    //         mldl_cfg->requested_sensors);
 
     result = ioctl((int)mlsl_handle, MPU_SET_MPU_CONFIG, mldl_cfg);
     if (result) {
@@ -314,7 +311,7 @@ int inv_mpu_suspend(struct mldl_cfg *mldl_cfg,
     }
 
     mldl_cfg->requested_sensors = requested;
-    MPL_LOGI("%s: Will resume next to %04lx\n", __func__, requested);
+    //MPL_LOGI("%s: Will resume next to %04lx\n", __func__, requested);
 
     return result;
 }

@@ -102,6 +102,7 @@ protected:
     int mSampleCount;
     pthread_mutex_t mMplMutex;
     int64_t now_ns();
+    int64_t select_ns(unsigned long long time_set[]);    
 
     enum FILEHANDLES
     {
