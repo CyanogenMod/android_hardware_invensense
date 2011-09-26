@@ -37,9 +37,37 @@ extern "C" {
     /* - Defines. - */
     /* ------------ */
 
+#define YAS_MAX_FILTER_LEN (20)
+#define YAS_DEFAULT_FILTER_LEN (20)
+#define YAS_DEFAULT_FILTER_THRESH (700) /* 700 nT */
+#define YAS_DEFAULT_FILTER_NOISE (5000 * 5000) /* standard deviation 5000 nT */
+
     /* --------------- */
     /* - Structures. - */
     /* --------------- */
+
+struct yas_adaptive_filter {
+    int num;
+    int index;
+    int len;
+    float noise;
+    float sequence[YAS_MAX_FILTER_LEN];
+};
+
+struct yas_thresh_filter {
+    float threshold;
+    float last;
+};
+
+typedef struct {
+    struct yas_adaptive_filter adap_filter[3];
+    struct yas_thresh_filter thresh_filter[3];
+} yas_filter_handle_t;
+
+typedef struct {
+    int (*init)(yas_filter_handle_t *t);
+    int (*update)(yas_filter_handle_t *t, float *input, float *output);
+} yas_filter_if_s;
 
     /* --------------------- */
     /* - Function p-types. - */
@@ -55,6 +83,8 @@ extern "C" {
     inv_error_t inv_compass_write_reg(unsigned char reg, unsigned char val);
     inv_error_t inv_compass_read_reg(unsigned char reg, unsigned char *val);
     inv_error_t inv_compass_read_scale(long *val);
+
+    int yas_filter_init(yas_filter_if_s *f);
 
 #ifdef __cplusplus
 }
