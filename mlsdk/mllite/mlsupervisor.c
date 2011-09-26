@@ -60,6 +60,9 @@ static int accCount = 0;
 static int compassCalStableCount = 0;
 static int compassCalCount = 0;
 
+static yas_filter_if_s f;
+static yas_filter_handle_t handle;
+
 #define SUPERVISOR_DEBUG 0
 
 struct inv_supervisor_cb_obj ml_supervisor_cb = { 0 };
@@ -75,6 +78,10 @@ void inv_init_sensor_fusion_supervisor(void)
     accCount = 0;
     compassCalStableCount = 0;
     compassCalCount = 0;
+
+    yas_filter_init(&f);
+    f.init(&handle);
+
 #if defined CONFIG_MPU_SENSORS_MPU6050A2 || \
 	defined CONFIG_MPU_SENSORS_MPU6050B1
     if (inv_compass_present()) {
@@ -358,6 +365,10 @@ inv_error_t inv_accel_compass_supervisor(void)
     long accSF = 1073741824;
     static double magFB = 0;
     long magSensorData[3];
+    float fcin[3];
+    float fcout[3];
+    
+
     if (inv_compass_present()) {    /* check for compass data */
         int i, j;
         long long tmp[3] = { 0 };
@@ -419,6 +430,20 @@ inv_error_t inv_accel_compass_supervisor(void)
                         return result;
                     }
                 }
+
+                if (inv_get_compass_id() == COMPASS_ID_YAS530)
+                {
+                    fcin[0] = 1000*((float)inv_obj.compass_calibrated_data[0] /65536.f);
+                    fcin[1] = 1000*((float)inv_obj.compass_calibrated_data[1] /65536.f);
+                    fcin[2] = 1000*((float)inv_obj.compass_calibrated_data[2] /65536.f);
+
+                    f.update(&handle, fcin, fcout);
+
+                    inv_obj.compass_calibrated_data[0] = (long)(fcout[0]*65536.f/1000.f);
+                    inv_obj.compass_calibrated_data[1] = (long)(fcout[1]*65536.f/1000.f);
+                    inv_obj.compass_calibrated_data[2] = (long)(fcout[2]*65536.f/1000.f);
+                }
+
 
                 if (SUPERVISOR_DEBUG) {
                     MPL_LOGI("RM : %+10.6f %+10.6f %+10.6f\n",

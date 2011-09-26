@@ -38,7 +38,7 @@
 /* ------------------ */
 
 #include <string.h>
-
+#include <stdlib.h>
 #include "compass.h"
 
 #include "ml.h"
@@ -77,7 +77,139 @@
 /* - Functions. - */
 /* -------------- */
 
-/** 
+static float square(float data)
+{
+    return data * data;
+}
+
+static void adaptive_filter_init(struct yas_adaptive_filter *adap_filter, int len, float noise)
+{
+    int i;
+
+    adap_filter->num = 0;
+    adap_filter->index = 0;
+    adap_filter->noise = noise;
+    adap_filter->len = len;
+
+    for (i = 0; i < adap_filter->len; ++i) {
+        adap_filter->sequence[i] = 0;
+    }
+}
+
+static int cmpfloat(const void *p1, const void *p2)
+{
+    return *(float*)p1 - *(float*)p2;
+}
+
+
+static float adaptive_filter_filter(struct yas_adaptive_filter *adap_filter, float in)
+{
+    float avg, sum, median, sorted[YAS_DEFAULT_FILTER_LEN];
+    int i;
+
+    if (adap_filter->len <= 1) {
+        return in;
+    }
+    if (adap_filter->num < adap_filter->len) {
+        adap_filter->sequence[adap_filter->index++] = in;
+        adap_filter->num++;
+        return in;
+    }
+    if (adap_filter->len <= adap_filter->index) {
+        adap_filter->index = 0;
+    }
+    adap_filter->sequence[adap_filter->index++] = in;
+
+    avg = 0;
+    for (i = 0; i < adap_filter->len; i++) {
+        avg += adap_filter->sequence[i];
+    }
+    avg /= adap_filter->len;
+
+    memcpy(sorted, adap_filter->sequence, adap_filter->len * sizeof(float));
+    qsort(&sorted, adap_filter->len, sizeof(float), cmpfloat);
+    median = sorted[adap_filter->len/2];
+
+    sum = 0;
+    for (i = 0; i < adap_filter->len; i++) {
+        sum += square(avg - adap_filter->sequence[i]);
+    }
+    sum /= adap_filter->len;
+
+    if (sum <= adap_filter->noise) {
+        return median;
+    }
+
+    return ((in - avg) * (sum - adap_filter->noise) / sum + avg);
+}
+
+static void thresh_filter_init(struct yas_thresh_filter *thresh_filter, float threshold)
+{
+    thresh_filter->threshold = threshold;
+    thresh_filter->last = 0;
+}
+
+static float thresh_filter_filter(struct yas_thresh_filter *thresh_filter, float in)
+{
+    if (in < thresh_filter->last - thresh_filter->threshold
+            || thresh_filter->last + thresh_filter->threshold < in) {
+        thresh_filter->last = in;
+        return in;
+    }
+    else {
+        return thresh_filter->last;
+    }
+}
+
+static int init(yas_filter_handle_t *t)
+{
+    float noise[] = {
+        YAS_DEFAULT_FILTER_NOISE,
+        YAS_DEFAULT_FILTER_NOISE,
+        YAS_DEFAULT_FILTER_NOISE,
+    };
+    int i;
+
+    if (t == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < 3; i++) {
+        adaptive_filter_init(&t->adap_filter[i], YAS_DEFAULT_FILTER_LEN, noise[i]);
+        thresh_filter_init(&t->thresh_filter[i], YAS_DEFAULT_FILTER_THRESH);
+    }
+
+    return 0;
+}
+
+static int update(yas_filter_handle_t *t, float *input, float *output)
+{
+    int i;
+
+    if (t == NULL || input == NULL || output == NULL) {
+        return -1;
+    }
+
+    for (i = 0; i < 3; i++) {
+        output[i] = adaptive_filter_filter(&t->adap_filter[i], input[i]);
+        output[i] = thresh_filter_filter(&t->thresh_filter[i], output[i]);
+    }
+
+    return 0;
+}
+
+int yas_filter_init(yas_filter_if_s *f)
+{
+    if (f == NULL) {
+        return -1;
+    }
+    f->init = init;
+    f->update = update;
+
+    return 0;
+}
+
+/**
  *  @brief  Used to determine if a compass is
  *          configured and used by the MPL.
  *  @return INV_SUCCESS if the compass is present.
