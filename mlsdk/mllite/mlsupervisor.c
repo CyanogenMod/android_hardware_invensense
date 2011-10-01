@@ -431,6 +431,7 @@ inv_error_t inv_accel_compass_supervisor(void)
                     }
                 }
 
+#ifdef APPLY_COMPASS_FILTER
                 if (inv_get_compass_id() == COMPASS_ID_YAS530)
                 {
                     fcin[0] = 1000*((float)inv_obj.compass_calibrated_data[0] /65536.f);
@@ -443,7 +444,7 @@ inv_error_t inv_accel_compass_supervisor(void)
                     inv_obj.compass_calibrated_data[1] = (long)(fcout[1]*65536.f/1000.f);
                     inv_obj.compass_calibrated_data[2] = (long)(fcout[2]*65536.f/1000.f);
                 }
-
+#endif
 
                 if (SUPERVISOR_DEBUG) {
                     MPL_LOGI("RM : %+10.6f %+10.6f %+10.6f\n",

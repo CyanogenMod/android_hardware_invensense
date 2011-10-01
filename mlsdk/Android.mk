@@ -46,6 +46,12 @@ LOCAL_CFLAGS += -I$(LOCAL_PATH)/$(MLSDK_ROOT)/platform/include/linux
 LOCAL_CFLAGS += -I$(LOCAL_PATH)/$(MLSDK_ROOT)/mllite/akmd
 LOCAL_CFLAGS += -I$(LOCAL_PATH)/$(MLPLATFORM_DIR)/linux
 
+# optionally apply the compass filter. this is set in
+# BoardConfig.mk
+ifeq ($(BOARD_INVENSENSE_APPLY_COMPASS_NOISE_FILTER),true)
+LOCAL_CFLAGS += -DAPPLY_COMPASS_FILTER
+endif
+
 ML_SOURCES = \
         $(MLLITE_DIR)/accel.c \
         $(MLLITE_DIR)/compass.c \
