@@ -146,7 +146,7 @@ MPLSensor::MPLSensor() :
             mDmpStarted(false),
             mMasterSensorMask(INV_ALL_SENSORS),
             mLocalSensorMask(ALL_MPL_SENSORS_NP), mPollTime(-1),
-            mCurFifoRate(-1), mHaveGoodMpuCal(false),
+            mCurFifoRate(-1), mHaveGoodMpuCal(false), mHaveGoodCompassCal(false),
             mUseTimerIrqAccel(false), mUsetimerIrqCompass(true),
             mUseTimerirq(false), mSampleCount(0),
             mEnabled(0), mPendingMask(0)
@@ -413,11 +413,12 @@ void MPLSensor::setPowerStates(int enabled_sensors)
         }
 
         if (!mDmpStarted) {
-            if (mHaveGoodMpuCal) {
+            if (mHaveGoodMpuCal || mHaveGoodCompassCal) {
                 rv = inv_store_calibration();
                 LOGE_IF(rv != INV_SUCCESS,
                         "error: unable to store MPL calibration file");
                 mHaveGoodMpuCal = false;
+                mHaveGoodCompassCal = false;
             }
             //LOGV("Starting DMP");
             rv = inv_dmp_start();
@@ -635,6 +636,9 @@ int MPLSensor::estimateCompassAccuracy()
     int rv;
 
     res = inv_get_compass_accuracy(&rv);
+    if(rv == SENSOR_STATUS_ACCURACY_HIGH) {
+         mHaveGoodCompassCal = true;	 
+    }
     LOGE_IF(res != INV_SUCCESS, "error returned from inv_get_compass_accuracy");
 
     return rv;

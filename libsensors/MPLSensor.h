@@ -95,6 +95,7 @@ protected:
     int mPollTime;
     int mCurFifoRate; //current fifo rate
     bool mHaveGoodMpuCal; //flag indicating that the cal file can be written
+    bool mHaveGoodCompassCal;
     bool mUseTimerIrqAccel;
     bool mUsetimerIrqCompass;
     bool mUseTimerirq;
