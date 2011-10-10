@@ -59,7 +59,8 @@ extern "C" {
 #include "sensor_params.h"
 
 #define EXTRA_VERBOSE (0)
-#define FUNC_LOG LOGV("%s", __PRETTY_FUNCTION__)
+//#define FUNC_LOG LOGV("%s", __PRETTY_FUNCTION__)
+#define FUNC_LOG
 #define VFUNC_LOG LOGV_IF(EXTRA_VERBOSE, "%s", __PRETTY_FUNCTION__)
 /* this mask must turn on only the sensors that are present and managed by the MPL */
 #define ALL_MPL_SENSORS_NP (INV_THREE_AXIS_ACCEL | INV_THREE_AXIS_COMPASS | INV_THREE_AXIS_GYRO)
@@ -290,15 +291,15 @@ MPLSensor::~MPLSensor()
     FUNC_LOG;
     pthread_mutex_lock(&mMplMutex);
     if (inv_dmp_stop() != INV_SUCCESS) {
-        LOGD("Error: could not stop the DMP correctly.\n");
+        LOGW("Error: could not stop the DMP correctly.\n");
     }
 
     if (inv_dmp_close() != INV_SUCCESS) {
-        LOGD("Error: could not close the DMP");
+        LOGW("Error: could not close the DMP");
     }
 
     if (inv_serial_stop() != INV_SUCCESS) {
-        LOGD("Error : could not close the serial port");
+        LOGW("Error : could not close the serial port");
     }
     pthread_mutex_unlock(&mMplMutex);
     pthread_mutex_destroy(&mMplMutex);
@@ -336,7 +337,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
     FUNC_LOG;
     bool irq_set[5] = { false, false, false, false, false };
 
-    LOGV(" enabled_sensors: %d dmp_started: %d", enabled_sensors, mDmpStarted);
+    //LOGV(" setPowerStates: %d dmp_started: %d", enabled_sensors, mDmpStarted);
 
     do {
 
@@ -390,7 +391,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
         }
 
         if (sen_mask != inv_get_dl_config()->requested_sensors) {
-            LOGV("inv_set_mpu_sensors: %lx", sen_mask);
+            //LOGV("setPowerStates: %lx", sen_mask);
             rv = inv_set_mpu_sensors(sen_mask);
             LOGE_IF(rv != INV_SUCCESS,
                     "error: unable to set MPL sensor power states (sens=%ld retcode = %d)",
@@ -418,7 +419,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
                         "error: unable to store MPL calibration file");
                 mHaveGoodMpuCal = false;
             }
-            LOGV("Starting DMP");
+            //LOGV("Starting DMP");
             rv = inv_dmp_start();
             LOGE_IF(rv != INV_SUCCESS, "unable to start dmp");
             mDmpStarted = true;
@@ -427,7 +428,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
 
     //check if we should stop the DMP
     if (mDmpStarted && (sen_mask == 0)) {
-        LOGV("Stopping DMP");
+        //LOGV("Stopping DMP");
         rv = inv_dmp_stop();
         LOGE_IF(rv != INV_SUCCESS, "error: unable to stop DMP (retcode = %d)",
                 rv);
@@ -651,7 +652,7 @@ void MPLSensor::compassHandler(sensors_event_t* s, uint32_t* pending_mask,
     res = inv_get_float_array(INV_MAGNETOMETER, s->magnetic.v);
 
     if (res != INV_SUCCESS) {
-        LOGD(
+        LOGW(
              "compass_handler inv_get_float_array(INV_MAGNETOMETER) returned %d",
              res);
     }
@@ -799,14 +800,14 @@ void MPLSensor::orienHandler(sensors_event_t* s, uint32_t* pending_mask,
     if (res == INV_SUCCESS)
         *pending_mask |= (1 << index);
     else
-        LOGD("orien_handler: data not valid (%d)", (int) res);
+        LOGW("orienHandler: data not valid (%d)", (int) res);
 
 }
 
 int MPLSensor::enable(int32_t handle, int en)
 {
     FUNC_LOG;
-    LOGV("handle : %d en: %d", handle, en);
+    //LOGV("handle : %d en: %d", handle, en);
 
     int what = -1;
 
@@ -842,8 +843,8 @@ int MPLSensor::enable(int32_t handle, int en)
 
     int newState = en ? 1 : 0;
     int err = 0;
-    LOGV_IF((uint32_t(newState) << what) != (mEnabled & (1 << what)),
-            "sensor state change what=%d", what);
+    //LOGV_IF((uint32_t(newState) << what) != (mEnabled & (1 << what)),
+    //        "sensor state change what=%d", what);
 
     pthread_mutex_lock(&mMplMutex);
     if ((uint32_t(newState) << what) != (mEnabled & (1 << what))) {
@@ -865,8 +866,8 @@ int MPLSensor::enable(int32_t handle, int en)
 int MPLSensor::setDelay(int32_t handle, int64_t ns)
 {
     FUNC_LOG;
-    /* LOGV_IF(EXTRA_VERBOSE, */
-    LOGD(" setDelay handle: %d rate %d", handle, (int) (ns / 1000000LL));
+    LOGV_IF(EXTRA_VERBOSE,
+            " setDelay handle: %d rate %d", handle, (int) (ns / 1000000LL));
     int what = -1;
     switch (handle) {
     case ID_A:
@@ -935,7 +936,7 @@ int MPLSensor::update_delay()
             rate = 1;
 
         if (rate != mCurFifoRate) {
-            LOGD("set fifo rate: %d %llu", rate, wanted);
+            //LOGD("set fifo rate: %d %llu", rate, wanted);
             inv_error_t res; // = inv_dmp_stop();
             res = inv_set_fifo_rate(rate);
             LOGE_IF(res != INV_SUCCESS, "error setting FIFO rate");
@@ -1043,26 +1044,26 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
 
 int MPLSensor::getFd() const
 {
-    LOGV("MPLSensor::getFd returning %d", data_fd);
+    //LOGV("MPLSensor::getFd returning %d", data_fd);
     return data_fd;
 }
 
 int MPLSensor::getAccelFd() const
 {
-    LOGV("MPLSensor::getAccelFd returning %d", accel_fd);
+    //LOGV("MPLSensor::getAccelFd returning %d", accel_fd);
     return accel_fd;
 }
 
 int MPLSensor::getTimerFd() const
 {
-    LOGV("MPLSensor::getTimerFd returning %d", timer_fd);
+    //LOGV("MPLSensor::getTimerFd returning %d", timer_fd);
     return timer_fd;
 }
 
 int MPLSensor::getPowerFd() const
 {
     int hdl = (int) inv_get_serial_handle();
-    LOGV("MPLSensor::getPowerFd returning %d", hdl);
+    //LOGV("MPLSensor::getPowerFd returning %d", hdl);
     return hdl;
 }
 
