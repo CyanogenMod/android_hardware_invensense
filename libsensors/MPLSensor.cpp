@@ -636,7 +636,7 @@ int MPLSensor::estimateCompassAccuracy()
     int rv;
 
     res = inv_get_compass_accuracy(&rv);
-    if(rv == SENSOR_STATUS_ACCURACY_HIGH) {
+    if(rv >= SENSOR_STATUS_ACCURACY_MEDIUM) {
          mHaveGoodCompassCal = true;	 
     }
     LOGE_IF(res != INV_SUCCESS, "error returned from inv_get_compass_accuracy");
