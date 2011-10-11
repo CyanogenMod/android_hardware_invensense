@@ -2007,7 +2007,8 @@ inv_error_t inv_set_fifo_rate(unsigned short fifoRate)
             LOG_RESULT_LOCATION(result);
             return result;
         }
-        MPL_LOGI("Actual ODR: %ld Hz\n", data / 1000);
+        if(FIFO_DEBUG)
+            MPL_LOGI("Actual ODR: %ld Hz\n", data / 1000);
         /* Record the actual frequency granted odr is in mHz */
         fifo_obj.sample_step_size_ms = (unsigned short)((1000L * 1000L) / data);
     }
