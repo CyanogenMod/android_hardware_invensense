@@ -888,6 +888,8 @@ inv_error_t inv_load_cal_V4(unsigned char *calData, unsigned short len)
     }
 
     /* read the compass biases */
+    inv_reset_compass_calibration();
+
     inv_obj.got_compass_bias = (int)calData[ptr++];
     LOADCAL_LOG("got_compass_bias = %ld\n", inv_obj.got_compass_bias);
     inv_obj.got_init_compass_bias = (int)calData[ptr++];
@@ -1002,19 +1004,19 @@ inv_error_t inv_load_cal_V4(unsigned char *calData, unsigned short len)
     inv_obj.compass_offsets[1] = calData[ptr++];
     inv_obj.compass_offsets[2] = calData[ptr++];
 
+    inv_obj.compass_accuracy = calData[ptr++];
     /* push the compass offset values to the device */
     result = inv_set_compass_offset();
 
     if (result == INV_SUCCESS) {
         if (inv_compass_check_range() != INV_SUCCESS) {
             MPL_LOGI("range check fail");
+            inv_reset_compass_calibration();
             inv_obj.flags[INV_COMPASS_OFFSET_VALID] = 0;
             inv_set_compass_offset();
         }
     }
 
-    /* load the compass accuracy */
-    inv_obj.compass_accuracy = calData[ptr++];
     inv_obj.got_no_motion_bias = TRUE;
     LOADCAL_LOG("got_no_motion_bias = 1\n");
     inv_obj.cal_loaded_flag = TRUE;
@@ -1275,7 +1277,7 @@ inv_error_t inv_store_cal(unsigned char *calData, int length)
         calData[ptr++] = (unsigned char)((tmp >> 16) & 0xff);
         calData[ptr++] = (unsigned char)((tmp >> 8) & 0xff);
         calData[ptr++] = (unsigned char)(tmp & 0xff);
-        STORECAL_LOG("mlTempValid[%d] = %lld\n", i, tmp);
+        STORECAL_LOG("temp_valid_data[%d] = %lld\n", i, tmp);
     }
     for (i = 0; i < BINS; i++) {
         for (j = 0; j < PTS_PER_BIN; j++) {
@@ -1455,10 +1457,10 @@ inv_error_t inv_store_cal(unsigned char *calData, int length)
     }
 
     /* store the compass offsets and validity flag */
-    calData[ptr++] = inv_obj.flags[INV_COMPASS_OFFSET_VALID];
-    calData[ptr++] = inv_obj.compass_offsets[0];
-    calData[ptr++] = inv_obj.compass_offsets[1];
-    calData[ptr++] = inv_obj.compass_offsets[2];
+    calData[ptr++] = (unsigned char)inv_obj.flags[INV_COMPASS_OFFSET_VALID];
+    calData[ptr++] = (unsigned char)inv_obj.compass_offsets[0];
+    calData[ptr++] = (unsigned char)inv_obj.compass_offsets[1];
+    calData[ptr++] = (unsigned char)inv_obj.compass_offsets[2];
 
     /* store the compass accuracy */
     calData[ptr++] = (unsigned char)(inv_obj.compass_accuracy);

@@ -534,7 +534,6 @@ inv_error_t inv_set_compass_offset(void)
             inv_obj.compass_offsets[0] = data[0];
             inv_obj.compass_offsets[1] = data[1];
             inv_obj.compass_offsets[2] = data[2];
-            inv_reset_compass_calibration();
         }
     }
 
