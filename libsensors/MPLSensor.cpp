@@ -797,9 +797,7 @@ void MPLSensor::orienHandler(sensors_event_t* s, uint32_t* pending_mask,
     //ComputeAndOrientation(heading[0], euler, s->orientation.v);
     calcOrientationSensor(rot_mat, s->orientation.v);
 
-    s->orientation.status
-            = ((mMpuAccuracy < estimateCompassAccuracy()) ? mMpuAccuracy
-                                                            : estimateCompassAccuracy());
+    s->orientation.status = estimateCompassAccuracy();
 
     if (res == INV_SUCCESS)
         *pending_mask |= (1 << index);
