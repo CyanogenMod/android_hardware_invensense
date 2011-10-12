@@ -39,8 +39,8 @@ extern "C" {
 
 #define YAS_MAX_FILTER_LEN (20)
 #define YAS_DEFAULT_FILTER_LEN (20)
-#define YAS_DEFAULT_FILTER_THRESH (700) /* 700 nT */
-#define YAS_DEFAULT_FILTER_NOISE (5000 * 5000) /* standard deviation 5000 nT */
+#define YAS_DEFAULT_FILTER_THRESH (300) /* 300 nT */
+#define YAS_DEFAULT_FILTER_NOISE (2000 * 2000) /* standard deviation 2000 nT */
 
     /* --------------- */
     /* - Structures. - */
