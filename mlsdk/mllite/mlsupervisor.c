@@ -56,9 +56,11 @@
 
 static unsigned long lastCompassTime = 0;
 static unsigned long polltime = 0;
+static unsigned long coiltime = 0;
 static int accCount = 0;
 static int compassCalStableCount = 0;
 static int compassCalCount = 0;
+static int coiltimerstart = 0;
 
 static yas_filter_if_s f;
 static yas_filter_handle_t handle;
@@ -421,6 +423,21 @@ inv_error_t inv_accel_compass_supervisor(void)
                         }
                         inv_obj.compass_calibrated_data[i] =
                             (long) (tmp64 / inv_obj.compass_sens);
+                    }
+                    //Additions:
+                    if (inv_obj.compass_overunder) {
+                        if (coiltimerstart == 0) {
+                            coiltimerstart = 1;
+                            coiltime = ctime;
+                        }
+                    }
+                    if (coiltimerstart == 1) {
+                        if (ctime - coiltime > 3000) {
+                            inv_obj.flags[INV_COMPASS_OFFSET_VALID] = 0;
+                            inv_set_compass_offset();
+                            inv_reset_compass_calibration();
+                            coiltimerstart = 0;
+                        }
                     }
                 }
                 if (inv_obj.external_slave_callback) {

@@ -379,6 +379,7 @@ struct inv_obj_t {
         long pressure;
         inv_error_t (*external_slave_callback)(struct inv_obj_t *);
         int  compass_accuracy;
+        int compass_overunder;
 
         unsigned short flags[8];
         unsigned short suspend;

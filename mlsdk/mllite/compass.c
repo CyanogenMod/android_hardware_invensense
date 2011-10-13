@@ -300,6 +300,9 @@ inv_error_t inv_get_compass_data(long *data)
                 data[ii] =
                     ((long)((signed char)tmp[2 * ii + 1]) << 8) + tmp[2 * ii];
         }
+
+        inv_obj.compass_overunder = (int)tmp[6];
+
     } else {
 #if defined CONFIG_MPU_SENSORS_MPU6050A2 ||             \
     defined CONFIG_MPU_SENSORS_MPU6050B1
