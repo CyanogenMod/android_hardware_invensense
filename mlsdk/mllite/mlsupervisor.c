@@ -61,6 +61,8 @@ static int accCount = 0;
 static int compassCalStableCount = 0;
 static int compassCalCount = 0;
 static int coiltimerstart = 0;
+static unsigned long disturbtime = 0;
+static int disturbtimerstart = 0;
 
 static yas_filter_if_s f;
 static yas_filter_handle_t handle;
@@ -425,6 +427,16 @@ inv_error_t inv_accel_compass_supervisor(void)
                             (long) (tmp64 / inv_obj.compass_sens);
                     }
                     //Additions:
+                    if ((inv_obj.compass_state == 1) &&
+                            (inv_obj.compass_overunder == 0)) {
+                        if (disturbtimerstart == 0) {
+                            disturbtimerstart = 1;
+                            disturbtime = ctime;
+                        }
+                    } else {
+                        disturbtimerstart = 0;
+                    }
+
                     if (inv_obj.compass_overunder) {
                         if (coiltimerstart == 0) {
                             coiltimerstart = 1;
@@ -437,6 +449,16 @@ inv_error_t inv_accel_compass_supervisor(void)
                             inv_set_compass_offset();
                             inv_reset_compass_calibration();
                             coiltimerstart = 0;
+                        }
+                    }
+
+                    if (disturbtimerstart == 1) {
+                        if (ctime - disturbtime > 10000) {
+                            inv_obj.flags[INV_COMPASS_OFFSET_VALID] = 0;
+                            inv_set_compass_offset();
+                            inv_reset_compass_calibration();
+                            MPL_LOGI("Compass reset! inv_reset_compass_calibration \n");
+                            disturbtimerstart = 0;
                         }
                     }
                 }
