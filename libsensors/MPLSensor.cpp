@@ -59,9 +59,9 @@ extern "C" {
 #include "sensor_params.h"
 
 #define EXTRA_VERBOSE (0)
-//#define FUNC_LOG LOGV("%s", __PRETTY_FUNCTION__)
+//#define FUNC_LOG ALOGV("%s", __PRETTY_FUNCTION__)
 #define FUNC_LOG
-#define VFUNC_LOG LOGV_IF(EXTRA_VERBOSE, "%s", __PRETTY_FUNCTION__)
+#define VFUNC_LOG ALOGV_IF(EXTRA_VERBOSE, "%s", __PRETTY_FUNCTION__)
 /* this mask must turn on only the sensors that are present and managed by the MPL */
 #define ALL_MPL_SENSORS_NP (INV_THREE_AXIS_ACCEL | INV_THREE_AXIS_COMPASS | INV_THREE_AXIS_GYRO)
 
@@ -156,7 +156,7 @@ MPLSensor::MPLSensor() :
     int mpu_int_fd, i;
     char *port = NULL;
 
-    LOGV_IF(EXTRA_VERBOSE, "MPLSensor constructor: numSensors = %d", numSensors);
+    ALOGV_IF(EXTRA_VERBOSE, "MPLSensor constructor: numSensors = %d", numSensors);
 
     pthread_mutex_init(&mMplMutex, NULL);
 
@@ -322,7 +322,7 @@ void MPLSensor::clearIrqData(bool* irq_set)
             if (nread > 0) {
                 irq_set[i] = true;
                 irq_timestamp = irqdata.irqtime;
-                //LOGV_IF(EXTRA_VERBOSE, "irq: %d %d (%d)", i, irqdata.interruptcount, j++);
+                //ALOGV_IF(EXTRA_VERBOSE, "irq: %d %d (%d)", i, irqdata.interruptcount, j++);
             }
         }
         mPollFds[i].revents = 0;
@@ -337,7 +337,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
     FUNC_LOG;
     bool irq_set[5] = { false, false, false, false, false };
 
-    //LOGV(" setPowerStates: %d dmp_started: %d", enabled_sensors, mDmpStarted);
+    //ALOGV(" setPowerStates: %d dmp_started: %d", enabled_sensors, mDmpStarted);
 
     do {
 
@@ -382,7 +382,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
 
     if (changing_sensors || restart) {
 
-        LOGV_IF(EXTRA_VERBOSE, "cs:%d rs:%d ", changing_sensors, restart);
+        ALOGV_IF(EXTRA_VERBOSE, "cs:%d rs:%d ", changing_sensors, restart);
 
         if (mDmpStarted) {
             inv_dmp_stop();
@@ -391,7 +391,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
         }
 
         if (sen_mask != inv_get_dl_config()->requested_sensors) {
-            //LOGV("setPowerStates: %lx", sen_mask);
+            //ALOGV("setPowerStates: %lx", sen_mask);
             rv = inv_set_mpu_sensors(sen_mask);
             LOGE_IF(rv != INV_SUCCESS,
                     "error: unable to set MPL sensor power states (sens=%ld retcode = %d)",
@@ -401,14 +401,14 @@ void MPLSensor::setPowerStates(int enabled_sensors)
         if (((mUsetimerIrqCompass && (sen_mask == INV_THREE_AXIS_COMPASS))
                 || (mUseTimerIrqAccel && (sen_mask & INV_THREE_AXIS_ACCEL)))
                 && ((sen_mask & INV_DMP_PROCESSOR) == 0)) {
-            LOGV_IF(EXTRA_VERBOSE, "Allowing TimerIRQ");
+            ALOGV_IF(EXTRA_VERBOSE, "Allowing TimerIRQ");
             mUseTimerirq = true;
         } else {
             if (mUseTimerirq) {
                 ioctl(mIrqFds.valueFor(TIMERIRQ_FD), TIMERIRQ_STOP, 0);
                 clearIrqData(irq_set);
             }
-            LOGV_IF(EXTRA_VERBOSE, "Not allowing TimerIRQ");
+            ALOGV_IF(EXTRA_VERBOSE, "Not allowing TimerIRQ");
             mUseTimerirq = false;
         }
 
@@ -420,7 +420,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
                 mHaveGoodMpuCal = false;
                 mHaveGoodCompassCal = false;
             }
-            //LOGV("Starting DMP");
+            //ALOGV("Starting DMP");
             rv = inv_dmp_start();
             LOGE_IF(rv != INV_SUCCESS, "unable to start dmp");
             mDmpStarted = true;
@@ -429,7 +429,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
 
     //check if we should stop the DMP
     if (mDmpStarted && (sen_mask == 0)) {
-        //LOGV("Stopping DMP");
+        //ALOGV("Stopping DMP");
         rv = inv_dmp_stop();
         LOGE_IF(rv != INV_SUCCESS, "error: unable to stop DMP (retcode = %d)",
                 rv);
@@ -594,7 +594,7 @@ void MPLSensor::cbProcData()
 {
     mNewData = 1;
     mSampleCount++;
-    //LOGV_IF(EXTRA_VERBOSE, "new data (%d)", sampleCount);
+    //ALOGV_IF(EXTRA_VERBOSE, "new data (%d)", sampleCount);
 }
 
 //these handlers transform mpl data into one of the Android sensor types
@@ -624,7 +624,7 @@ void MPLSensor::accelHandler(sensors_event_t* s, uint32_t* pending_mask,
     s->acceleration.v[0] = s->acceleration.v[0] * 9.81;
     s->acceleration.v[1] = s->acceleration.v[1] * 9.81;
     s->acceleration.v[2] = s->acceleration.v[2] * 9.81;
-    //LOGV_IF(EXTRA_VERBOSE, "accel data: %f %f %f", s->acceleration.v[0], s->acceleration.v[1], s->acceleration.v[2]);
+    //ALOGV_IF(EXTRA_VERBOSE, "accel data: %f %f %f", s->acceleration.v[0], s->acceleration.v[1], s->acceleration.v[2]);
     s->acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
     if (res == INV_SUCCESS)
         *pending_mask |= (1 << index);
@@ -809,7 +809,7 @@ void MPLSensor::orienHandler(sensors_event_t* s, uint32_t* pending_mask,
 int MPLSensor::enable(int32_t handle, int en)
 {
     FUNC_LOG;
-    //LOGV("handle : %d en: %d", handle, en);
+    //ALOGV("handle : %d en: %d", handle, en);
 
     int what = -1;
 
@@ -845,7 +845,7 @@ int MPLSensor::enable(int32_t handle, int en)
 
     int newState = en ? 1 : 0;
     int err = 0;
-    //LOGV_IF((uint32_t(newState) << what) != (mEnabled & (1 << what)),
+    //ALOGV_IF((uint32_t(newState) << what) != (mEnabled & (1 << what)),
     //        "sensor state change what=%d", what);
 
     pthread_mutex_lock(&mMplMutex);
@@ -854,7 +854,7 @@ int MPLSensor::enable(int32_t handle, int en)
         short flags = newState;
         mEnabled &= ~(1 << what);
         mEnabled |= (uint32_t(flags) << what);
-        LOGV_IF(EXTRA_VERBOSE, "mEnabled = %x", mEnabled);
+        ALOGV_IF(EXTRA_VERBOSE, "mEnabled = %x", mEnabled);
         setPowerStates(mEnabled);
         pthread_mutex_unlock(&mMplMutex);
         if (!newState)
@@ -868,7 +868,7 @@ int MPLSensor::enable(int32_t handle, int en)
 int MPLSensor::setDelay(int32_t handle, int64_t ns)
 {
     FUNC_LOG;
-    LOGV_IF(EXTRA_VERBOSE,
+    ALOGV_IF(EXTRA_VERBOSE,
             " setDelay handle: %d rate %d", handle, (int) (ns / 1000000LL));
     int what = -1;
     switch (handle) {
@@ -958,12 +958,12 @@ int MPLSensor::update_delay()
                         == INV_THREE_AXIS_COMPASS) {
                     ioctl(mIrqFds.valueFor(TIMERIRQ_FD), TIMERIRQ_START,
                           (unsigned long) (wanted / 1000000LLU));
-                    LOGV_IF(EXTRA_VERBOSE, "updated timerirq period to %d",
+                    ALOGV_IF(EXTRA_VERBOSE, "updated timerirq period to %d",
                             (int) (wanted / 1000000LLU));
                 } else {
                     ioctl(mIrqFds.valueFor(TIMERIRQ_FD), TIMERIRQ_START,
                           (unsigned long) inv_get_sample_step_size_ms());
-                    LOGV_IF(EXTRA_VERBOSE, "updated timerirq period to %d",
+                    ALOGV_IF(EXTRA_VERBOSE, "updated timerirq period to %d",
                             (int) inv_get_sample_step_size_ms());
                 }
             }
@@ -981,7 +981,7 @@ int64_t MPLSensor::now_ns(void)
     struct timespec ts;
 
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    //LOGV("Time %lld", (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec);
+    //ALOGV("Time %lld", (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec);
     return (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 
@@ -999,21 +999,21 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
 
     pthread_mutex_lock(&mMplMutex);
     if (mDmpStarted) {
-        //LOGV_IF(EXTRA_VERBOSE, "Update Data");
+        //ALOGV_IF(EXTRA_VERBOSE, "Update Data");
         rv = inv_update_data();
         LOGE_IF(rv != INV_SUCCESS, "inv_update_data error (code %d)", (int) rv);
     }
 
     else {
         //probably just one extra read after shutting down
-        LOGV_IF(EXTRA_VERBOSE,
+        ALOGV_IF(EXTRA_VERBOSE,
                 "MPLSensor::readEvents called, but there's nothing to do.");
     }
 
     pthread_mutex_unlock(&mMplMutex);
 
     if (!mNewData) {
-        LOGV_IF(EXTRA_VERBOSE, "no new data");
+        ALOGV_IF(EXTRA_VERBOSE, "no new data");
         return 0;
     }
     mNewData = 0;
@@ -1046,26 +1046,26 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
 
 int MPLSensor::getFd() const
 {
-    //LOGV("MPLSensor::getFd returning %d", data_fd);
+    //ALOGV("MPLSensor::getFd returning %d", data_fd);
     return data_fd;
 }
 
 int MPLSensor::getAccelFd() const
 {
-    //LOGV("MPLSensor::getAccelFd returning %d", accel_fd);
+    //ALOGV("MPLSensor::getAccelFd returning %d", accel_fd);
     return accel_fd;
 }
 
 int MPLSensor::getTimerFd() const
 {
-    //LOGV("MPLSensor::getTimerFd returning %d", timer_fd);
+    //ALOGV("MPLSensor::getTimerFd returning %d", timer_fd);
     return timer_fd;
 }
 
 int MPLSensor::getPowerFd() const
 {
     int hdl = (int) inv_get_serial_handle();
-    //LOGV("MPLSensor::getPowerFd returning %d", hdl);
+    //ALOGV("MPLSensor::getPowerFd returning %d", hdl);
     return hdl;
 }
 
