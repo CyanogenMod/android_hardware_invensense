@@ -1964,9 +1964,9 @@ inv_error_t inv_set_fifo_rate(unsigned short fifoRate)
     if (state != INV_STATE_DMP_OPENED && state != INV_STATE_DMP_STARTED)
         return INV_ERROR_SM_IMPROPER_STATE;
 
-    if (mldl_cfg->requested_sensors & INV_DMP_PROCESSOR) {
+    fifo_obj.fifo_rate = fifoRate;
 
-        fifo_obj.fifo_rate = fifoRate;
+    if (mldl_cfg->requested_sensors & INV_DMP_PROCESSOR) {
 
         regs[0] = (unsigned char)((fifoRate >> 8) & 0xff);
         regs[1] = (unsigned char)(fifoRate & 0xff);
@@ -2026,12 +2026,7 @@ inv_error_t inv_set_fifo_rate(unsigned short fifoRate)
  */
 unsigned short inv_get_fifo_rate(void)
 {
-    struct mldl_cfg *mldl_cfg = inv_get_dl_config();
-    if (mldl_cfg->requested_sensors & INV_DMP_PROCESSOR)
-        return fifo_obj.fifo_rate;
-    else
-        return (unsigned short)((1000 * fifo_obj.sample_step_size_ms) /
-                                (inv_mpu_get_sampling_period_us(mldl_cfg))) - 1;
+    return fifo_obj.fifo_rate;
 }
 
 /**
