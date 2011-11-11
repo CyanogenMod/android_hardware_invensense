@@ -1775,10 +1775,11 @@ inv_error_t inv_set_mpu_sensors(unsigned long sensors)
         }
     }
 
+    inv_set_fifo_rate(fifoRate);
+
     if (!(sensors & INV_DMP_PROCESSOR) && (sensors & INV_THREE_AXIS_ACCEL)) {
         struct ext_slave_config config;
         long data;
-        inv_set_fifo_rate(fifoRate);
 
         config.len = sizeof(long);
         config.key = MPU_SLAVE_CONFIG_IRQ_RESUME;
