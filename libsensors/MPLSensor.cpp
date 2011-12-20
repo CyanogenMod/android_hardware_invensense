@@ -212,7 +212,7 @@ MPLSensor::MPLSensor() :
     if ((accel_fd == -1) && (timer_fd != -1)) {
         //no accel irq and timer available
         mUseTimerIrqAccel = true;
-        //LOGD("MPLSensor falling back to timerirq for accel data");
+        //ALOGD("MPLSensor falling back to timerirq for accel data");
     }
 
     memset(mPendingEvents, 0, sizeof(mPendingEvents));
@@ -938,7 +938,7 @@ int MPLSensor::update_delay()
             rate = 1;
 
         if (rate != mCurFifoRate) {
-            //LOGD("set fifo rate: %d %llu", rate, wanted);
+            //ALOGD("set fifo rate: %d %llu", rate, wanted);
             inv_error_t res; // = inv_dmp_stop();
             res = inv_set_fifo_rate(rate);
             LOGE_IF(res != INV_SUCCESS, "error setting FIFO rate");
