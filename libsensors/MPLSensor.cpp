@@ -291,15 +291,15 @@ MPLSensor::~MPLSensor()
     FUNC_LOG;
     pthread_mutex_lock(&mMplMutex);
     if (inv_dmp_stop() != INV_SUCCESS) {
-        LOGW("Error: could not stop the DMP correctly.\n");
+        ALOGW("Error: could not stop the DMP correctly.\n");
     }
 
     if (inv_dmp_close() != INV_SUCCESS) {
-        LOGW("Error: could not close the DMP");
+        ALOGW("Error: could not close the DMP");
     }
 
     if (inv_serial_stop() != INV_SUCCESS) {
-        LOGW("Error : could not close the serial port");
+        ALOGW("Error : could not close the serial port");
     }
     pthread_mutex_unlock(&mMplMutex);
     pthread_mutex_destroy(&mMplMutex);
@@ -656,7 +656,7 @@ void MPLSensor::compassHandler(sensors_event_t* s, uint32_t* pending_mask,
     res = inv_get_float_array(INV_MAGNETOMETER, s->magnetic.v);
 
     if (res != INV_SUCCESS) {
-        LOGW(
+        ALOGW(
              "compass_handler inv_get_float_array(INV_MAGNETOMETER) returned %d",
              res);
     }
@@ -802,7 +802,7 @@ void MPLSensor::orienHandler(sensors_event_t* s, uint32_t* pending_mask,
     if (res == INV_SUCCESS)
         *pending_mask |= (1 << index);
     else
-        LOGW("orienHandler: data not valid (%d)", (int) res);
+        ALOGW("orienHandler: data not valid (%d)", (int) res);
 
 }
 
