@@ -176,7 +176,7 @@ MPLSensor::MPLSensor() :
 
     mpu_int_fd = open("/dev/mpuirq", O_RDWR);
     if (mpu_int_fd == -1) {
-        LOGE("could not open the mpu irq device node");
+        ALOGE("could not open the mpu irq device node");
     } else {
         fcntl(mpu_int_fd, F_SETFL, O_NONBLOCK);
         //ioctl(mpu_int_fd, MPUIRQ_SET_TIMEOUT, 0);
@@ -187,7 +187,7 @@ MPLSensor::MPLSensor() :
 
     accel_fd = open("/dev/accelirq", O_RDWR);
     if (accel_fd == -1) {
-        LOGE("could not open the accel irq device node");
+        ALOGE("could not open the accel irq device node");
     } else {
         fcntl(accel_fd, F_SETFL, O_NONBLOCK);
         //ioctl(accel_fd, SLAVEIRQ_SET_TIMEOUT, 0);
@@ -198,7 +198,7 @@ MPLSensor::MPLSensor() :
 
     timer_fd = open("/dev/timerirq", O_RDWR);
     if (timer_fd == -1) {
-        LOGE("could not open the timer irq device node");
+        ALOGE("could not open the timer irq device node");
     } else {
         fcntl(timer_fd, F_SETFL, O_NONBLOCK);
         //ioctl(timer_fd, TIMERIRQ_SET_TIMEOUT, 0);
@@ -268,7 +268,7 @@ MPLSensor::MPLSensor() :
         mDelays[i] = 30000000LLU; // 30 ms by default
 
     if (inv_serial_start(port) != INV_SUCCESS) {
-        LOGE("Fatal Error : could not open MPL serial interface");
+        ALOGE("Fatal Error : could not open MPL serial interface");
     }
 
     //initialize library parameters
@@ -279,7 +279,7 @@ MPLSensor::MPLSensor() :
 
     //we start the motion processing only when a sensor is enabled...
     //rv = inv_dmp_start();
-    //LOGE_IF(rv != INV_SUCCESS, "Fatal error: could not start the DMP correctly. (code = %d)\n", rv);
+    //ALOGE_IF(rv != INV_SUCCESS, "Fatal error: could not start the DMP correctly. (code = %d)\n", rv);
     //dmp_started = true;
 
     pthread_mutex_unlock(&mMplMutex);
@@ -393,7 +393,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
         if (sen_mask != inv_get_dl_config()->requested_sensors) {
             //ALOGV("setPowerStates: %lx", sen_mask);
             rv = inv_set_mpu_sensors(sen_mask);
-            LOGE_IF(rv != INV_SUCCESS,
+            ALOGE_IF(rv != INV_SUCCESS,
                     "error: unable to set MPL sensor power states (sens=%ld retcode = %d)",
                     sen_mask, rv);
         }
@@ -415,14 +415,14 @@ void MPLSensor::setPowerStates(int enabled_sensors)
         if (!mDmpStarted) {
             if (mHaveGoodMpuCal || mHaveGoodCompassCal) {
                 rv = inv_store_calibration();
-                LOGE_IF(rv != INV_SUCCESS,
+                ALOGE_IF(rv != INV_SUCCESS,
                         "error: unable to store MPL calibration file");
                 mHaveGoodMpuCal = false;
                 mHaveGoodCompassCal = false;
             }
             //ALOGV("Starting DMP");
             rv = inv_dmp_start();
-            LOGE_IF(rv != INV_SUCCESS, "unable to start dmp");
+            ALOGE_IF(rv != INV_SUCCESS, "unable to start dmp");
             mDmpStarted = true;
         }
     }
@@ -431,7 +431,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
     if (mDmpStarted && (sen_mask == 0)) {
         //ALOGV("Stopping DMP");
         rv = inv_dmp_stop();
-        LOGE_IF(rv != INV_SUCCESS, "error: unable to stop DMP (retcode = %d)",
+        ALOGE_IF(rv != INV_SUCCESS, "error: unable to stop DMP (retcode = %d)",
                 rv);
         if (mUseTimerirq) {
             ioctl(mIrqFds.valueFor(TIMERIRQ_FD), TIMERIRQ_STOP, 0);
@@ -456,15 +456,15 @@ void MPLSensor::initMPL()
     struct mldl_cfg *mldl_cfg;
 
     if (inv_dmp_open() != INV_SUCCESS) {
-        LOGE("Fatal Error : could not open DMP correctly.\n");
+        ALOGE("Fatal Error : could not open DMP correctly.\n");
     }
 
     result = inv_set_mpu_sensors(ALL_MPL_SENSORS_NP); //default to all sensors, also makes 9axis enable work
-    LOGE_IF(result != INV_SUCCESS,
+    ALOGE_IF(result != INV_SUCCESS,
             "Fatal Error : could not set enabled sensors.");
 
     if (inv_load_calibration() != INV_SUCCESS) {
-        LOGE("could not open MPL calibration file");
+        ALOGE("could not open MPL calibration file");
     }
 
     //check for the 9axis fusion library: if available load it and start 9x
@@ -475,9 +475,9 @@ void MPLSensor::initMPL()
         inv_error_t (*fp_inv_enable_9x_fusion)() =
               (inv_error_t(*)()) dlsym(h_dmp_lib, "inv_enable_9x_fusion");
         if((error = dlerror()) != NULL) {
-            LOGE("%s %s", error, "inv_enable_9x_fusion");
+            ALOGE("%s %s", error, "inv_enable_9x_fusion");
         } else if ((*fp_inv_enable_9x_fusion)() != INV_SUCCESS) {
-            LOGE( "Warning : 9 axis sensor fusion not available "
+            ALOGE( "Warning : 9 axis sensor fusion not available "
                   "- No compass detected.\n");
         } else {
             /*  9axis is loaded and enabled                            */
@@ -486,26 +486,26 @@ void MPLSensor::initMPL()
         }
     } else {
         const char* error = dlerror();
-        LOGE("libinvensense_mpl.so not found, 9x sensor fusion disabled (%s)",error);
+        ALOGE("libinvensense_mpl.so not found, 9x sensor fusion disabled (%s)",error);
     }
 
     mldl_cfg = inv_get_dl_config();
 
     if (inv_set_bias_update(bias_update_mask) != INV_SUCCESS) {
-        LOGE("Error : Bias update function could not be set.\n");
+        ALOGE("Error : Bias update function could not be set.\n");
     }
 
     if (inv_set_motion_interrupt(1) != INV_SUCCESS) {
-        LOGE("Error : could not set motion interrupt");
+        ALOGE("Error : could not set motion interrupt");
     }
 
     if (inv_set_fifo_interrupt(1) != INV_SUCCESS) {
-        LOGE("Error : could not set fifo interrupt");
+        ALOGE("Error : could not set fifo interrupt");
     }
 
     result = inv_set_fifo_rate(6);
     if (result != INV_SUCCESS) {
-        LOGE("Fatal error: inv_set_fifo_rate returned %d\n", result);
+        ALOGE("Fatal error: inv_set_fifo_rate returned %d\n", result);
     }
 
     mMpuAccuracy = SENSOR_STATUS_ACCURACY_MEDIUM;
@@ -522,33 +522,33 @@ void MPLSensor::setupFIFO()
 
     result = inv_send_accel(INV_ALL, INV_32_BIT);
     if (result != INV_SUCCESS) {
-        LOGE("Fatal error: inv_send_accel returned %d\n", result);
+        ALOGE("Fatal error: inv_send_accel returned %d\n", result);
     }
 
     result = inv_send_quaternion(INV_32_BIT);
     if (result != INV_SUCCESS) {
-        LOGE("Fatal error: inv_send_quaternion returned %d\n", result);
+        ALOGE("Fatal error: inv_send_quaternion returned %d\n", result);
     }
 
     result = inv_send_linear_accel(INV_ALL, INV_32_BIT);
     if (result != INV_SUCCESS) {
-        LOGE("Fatal error: inv_send_linear_accel returned %d\n", result);
+        ALOGE("Fatal error: inv_send_linear_accel returned %d\n", result);
     }
 
     result = inv_send_linear_accel_in_world(INV_ALL, INV_32_BIT);
     if (result != INV_SUCCESS) {
-        LOGE("Fatal error: inv_send_linear_accel_in_world returned %d\n",
+        ALOGE("Fatal error: inv_send_linear_accel_in_world returned %d\n",
              result);
     }
 
     result = inv_send_gravity(INV_ALL, INV_32_BIT);
     if (result != INV_SUCCESS) {
-        LOGE("Fatal error: inv_send_gravity returned %d\n", result);
+        ALOGE("Fatal error: inv_send_gravity returned %d\n", result);
     }
 
     result = inv_send_gyro(INV_ALL, INV_32_BIT);
     if (result != INV_SUCCESS) {
-        LOGE("Fatal error: inv_send_gyro returned %d\n", result);
+        ALOGE("Fatal error: inv_send_gyro returned %d\n", result);
     }
 
 }
@@ -560,12 +560,12 @@ void MPLSensor::setupCallbacks()
 {
     FUNC_LOG;
     if (inv_set_motion_callback(mot_cb_wrapper) != INV_SUCCESS) {
-        LOGE("Error : Motion callback could not be set.\n");
+        ALOGE("Error : Motion callback could not be set.\n");
 
     }
 
     if (inv_set_fifo_processed_callback(procData_cb_wrapper) != INV_SUCCESS) {
-        LOGE("Error : Processed data callback could not be set.");
+        ALOGE("Error : Processed data callback could not be set.");
 
     }
 }
@@ -639,7 +639,7 @@ int MPLSensor::estimateCompassAccuracy()
     if(rv >= SENSOR_STATUS_ACCURACY_MEDIUM) {
          mHaveGoodCompassCal = true;	 
     }
-    LOGE_IF(res != INV_SUCCESS, "error returned from inv_get_compass_accuracy");
+    ALOGE_IF(res != INV_SUCCESS, "error returned from inv_get_compass_accuracy");
 
     return rv;
 }
@@ -941,10 +941,10 @@ int MPLSensor::update_delay()
             //ALOGD("set fifo rate: %d %llu", rate, wanted);
             inv_error_t res; // = inv_dmp_stop();
             res = inv_set_fifo_rate(rate);
-            LOGE_IF(res != INV_SUCCESS, "error setting FIFO rate");
+            ALOGE_IF(res != INV_SUCCESS, "error setting FIFO rate");
 
             //res = inv_dmp_start();
-            //LOGE_IF(res != INV_SUCCESS, "error re-starting DMP");
+            //ALOGE_IF(res != INV_SUCCESS, "error re-starting DMP");
 
             mCurFifoRate = rate;
             rv = (res == INV_SUCCESS);
@@ -1001,7 +1001,7 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
     if (mDmpStarted) {
         //ALOGV_IF(EXTRA_VERBOSE, "Update Data");
         rv = inv_update_data();
-        LOGE_IF(rv != INV_SUCCESS, "inv_update_data error (code %d)", (int) rv);
+        ALOGE_IF(rv != INV_SUCCESS, "inv_update_data error (code %d)", (int) rv);
     }
 
     else {
@@ -1133,7 +1133,7 @@ int MPLSensor::populateSensorList(struct sensor_t *list, int len)
     int numsensors;
 
     if(len < 7*sizeof(sensor_t)) {
-        LOGE("sensor list too small, not populating.");
+        ALOGE("sensor list too small, not populating.");
         return 0;
     }
 
@@ -1146,7 +1146,7 @@ int MPLSensor::populateSensorList(struct sensor_t *list, int len)
     unsigned short accelId = inv_get_accel_id();
     if(accelId == 0)
     {
-	LOGE("Can not get accel id");
+	ALOGE("Can not get accel id");
     }   
     fillAccel(accelId, list);
 
@@ -1154,7 +1154,7 @@ int MPLSensor::populateSensorList(struct sensor_t *list, int len)
     unsigned short compassId = inv_get_compass_id();
     if(compassId == 0)
     {
-	LOGE("Can not get compass id");
+	ALOGE("Can not get compass id");
     }  
     fillCompass(compassId, list);
 
@@ -1254,7 +1254,7 @@ void MPLSensor::fillAccel(unsigned char accel, struct sensor_t *list)
         list[Accelerometer].power = ACCEL_MPU6050_POWER;
         break;
     default:
-        LOGE("unknown accel id -- accel params will be wrong.");
+        ALOGE("unknown accel id -- accel params will be wrong.");
         break;
     }
 }
@@ -1308,7 +1308,7 @@ void MPLSensor::fillCompass(unsigned char compass, struct sensor_t *list)
         list[MagneticField].power = COMPASS_HSCDTD004A_POWER;
         break;
     default:
-        LOGE("unknown compass id -- compass parameters will be wrong");
+        ALOGE("unknown compass id -- compass parameters will be wrong");
     }
 }
 
