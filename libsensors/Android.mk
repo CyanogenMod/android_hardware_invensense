@@ -16,6 +16,7 @@
 LOCAL_PATH := $(call my-dir)
 
 ifneq ($(TARGET_SIMULATOR),true)
+ifeq ($(BUILD_INVENSENSE_IIO_HAL), true)
 
 # InvenSense fragment of the HAL
 include $(CLEAR_VARS)
@@ -141,4 +142,5 @@ LOCAL_MODULE_PATH := $(TARGET_OUT)/lib
 OVERRIDE_BUILT_MODULE_PATH := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)
 include $(BUILD_PREBUILT)
 
+endif # BUILD_INVENSENSE_IIO_HAL
 endif # !TARGET_SIMULATOR
