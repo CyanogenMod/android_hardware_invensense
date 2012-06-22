@@ -136,6 +136,7 @@ static FILE *logfile = NULL;
 
 MPLSensor::MPLSensor(CompassSensor *compass)
                        : SensorBase(NULL, NULL),
+                         mMplSensorInitialized(false),
                          mNewData(0),
                          mMasterSensorMask(INV_ALL_SENSORS),
                          mLocalSensorMask(ALL_MPL_SENSORS_NP),
@@ -183,7 +184,10 @@ MPLSensor::MPLSensor(CompassSensor *compass)
 #endif
 
     /* setup sysfs paths */
-    inv_init_sysfs_attributes();
+    if(inv_init_sysfs_attributes()) {
+        ALOGE("MPLSensor failed to init sysfs attributes");
+        return;
+    }
 
     /* get chip name */
     if (inv_get_chip_name(chip_ID) != INV_SUCCESS) {
@@ -203,7 +207,7 @@ MPLSensor::MPLSensor(CompassSensor *compass)
     /* Load DMP image if capable, ie. MPU6xxx/9xxx */
     // TODO: disabled for GED tablet
 #ifdef ENABLE_LP_QUAT_FEAT
-    loadDMP();	
+    loadDMP();
 #endif
 
     /* open temperature fd for temp comp */
@@ -220,7 +224,7 @@ MPLSensor::MPLSensor(CompassSensor *compass)
     if (USE_THIRD_PARTY_ACCEL == 0) {
         char buf[3];
         int count = 0;
-        LOGV_IF(SYSFS_VERBOSE, 
+        LOGV_IF(SYSFS_VERBOSE,
                 "HAL:sysfs:cat %s (%lld)", mpu.accel_fsr, getTimestamp());
 
         fd = open(mpu.accel_fsr, O_RDONLY);
@@ -323,6 +327,8 @@ MPLSensor::MPLSensor(CompassSensor *compass)
     if (logfile)
         inv_turn_on_data_logging(logfile);
 #endif
+
+    mMplSensorInitialized = true;
 }
 
 
@@ -2472,6 +2478,12 @@ int MPLSensor::inv_init_sysfs_attributes(void)
     char **dptr;
     int num;
 
+    // get proper (in absolute/relative) IIO path & build MPU's sysfs paths
+    // inv_get_sysfs_abs_path(sysfs_path);
+    if(INV_SUCCESS != inv_get_sysfs_path(sysfs_path)) {
+        ALOGE("MPLSensor failed get sysfs path");
+        return -1;
+    }
     sysfs_names_ptr = 
             (char*)malloc(sizeof(char[MAX_SYSFS_ATTRB][MAX_SYSFS_NAME_LEN]));
     sptr = sysfs_names_ptr;
@@ -2486,9 +2498,6 @@ int MPLSensor::inv_init_sysfs_attributes(void)
         return -1;
     }
 
-    // get proper (in absolute/relative) IIO path & build MPU's sysfs paths
-    // inv_get_sysfs_abs_path(sysfs_path);
-    inv_get_sysfs_path(sysfs_path);
     inv_get_iio_trigger_path(iio_trigger_path);
 
     sprintf(mpu.key, "%s%s", sysfs_path, "/key");

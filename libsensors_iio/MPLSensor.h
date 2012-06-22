@@ -112,6 +112,9 @@ public:
     int populateSensorList(struct sensor_t *list, int len);
     void cbProcData();
 
+    // Do not work with this object unless it is initialized
+    bool isValid() { return mMplSensorInitialized; };
+
     //static pointer to the object that will handle callbacks
     static MPLSensor* gMPLSensor;
 
@@ -122,6 +125,9 @@ public:
     int readCompassEvents(sensors_event_t* data, int count);
 
 protected:
+    // Lets us know if the constructor was actually able to finish its job.
+    // E.g. false if init sysfs failed.
+    bool mMplSensorInitialized;
     CompassSensor *mCompassSensor;
 
     int gyroHandler(sensors_event_t *data);

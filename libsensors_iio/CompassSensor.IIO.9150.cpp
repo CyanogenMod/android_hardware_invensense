@@ -375,7 +375,7 @@ int CompassSensor::inv_init_sysfs_attributes(void)
     dptr = (char**)&compassSysFs;
     if (sptr == NULL)
         return -1;
-    
+
     do {
         *dptr++ = sptr;
         sptr += sizeof(char[MAX_SYSFS_NAME_LEN]);
@@ -383,7 +383,11 @@ int CompassSensor::inv_init_sysfs_attributes(void)
 
     // get proper (in absolute/relative) IIO path & build MPU's sysfs paths
     // inv_get_sysfs_abs_path(sysfs_path);
-    inv_get_sysfs_path(sysfs_path);
+    if(INV_SUCCESS != inv_get_sysfs_path(sysfs_path)) {
+        ALOGE("CompassSensor failed get sysfs path");
+        return -1;
+    }
+
     inv_get_iio_trigger_path(iio_trigger_path);
 
 #if defined COMPASS_YAS530 || defined COMPASS_AK8975
