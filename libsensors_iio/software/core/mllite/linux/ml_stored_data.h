@@ -36,7 +36,7 @@ inv_error_t inv_store_calibration(void);
 /*
     Internal APIs
 */
-inv_error_t inv_read_cal(unsigned char *cal, size_t len);
+inv_error_t inv_read_cal(unsigned char **, size_t *);
 inv_error_t inv_write_cal(unsigned char *cal, size_t len);
 inv_error_t inv_load_cal_V0(unsigned char *calData, size_t len);
 inv_error_t inv_load_cal_V1(unsigned char *calData, size_t len);

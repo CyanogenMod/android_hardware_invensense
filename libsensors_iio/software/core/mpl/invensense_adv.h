@@ -28,3 +28,4 @@
 #include "quaternion_supervisor.h"
 #include "mag_disturb.h"
 #include "quat_accuracy_monitor.h"
+#include "shake.h"

@@ -19,11 +19,14 @@
 
 #include <stdint.h>
 
-    int inv_read_data(char *fname, long *data);
-    int read_attribute_sensor(int fd, char* data, unsigned int size);
-    int enable_sysfs_sensor(int fd, int en);
-    int write_attribute_sensor(int fd, long data);
-    int read_sysfs_int(char*, int*);
-    int write_sysfs_int(char*, int);
+int inv_read_data(char *fname, long *data);
+int read_attribute_sensor(int fd, char* data, unsigned int size);
+int enable_sysfs_sensor(int fd, int en);
+int write_attribute_sensor(int fd, long data);
+int write_attribute_sensor_continuous(int fd, long data);
+int read_sysfs_int(char*, int*);
+int write_sysfs_int(char*, int);
+int fill_dev_full_name_by_prefix(const char* dev_prefix,
+                                 char* dev_full_name, int len);
 
 #endif //  ANDROID_MPL_SUPPORT_H

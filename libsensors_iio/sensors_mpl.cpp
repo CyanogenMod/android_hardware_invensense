@@ -32,14 +32,25 @@
 
 #include "sensors.h"
 #include "MPLSensor.h"
-#include "local_log_def.h"
 
 /*****************************************************************************/
 /* The SENSORS Module */
-#define LOCAL_SENSORS (7)
 
-static struct sensor_t sSensorList[7];
-static int numSensors = LOCAL_SENSORS;
+#ifdef ENABLE_DMP_SCREEN_AUTO_ROTATION
+#define LOCAL_SENSORS (MPLSensor::NUMSENSORS + 1)
+#else
+#define LOCAL_SENSORS MPLSensor::NUMSENSORS
+#endif
+
+/* Vendor-defined Accel Load Calibration File Method
+* @param[out] Accel bias, length 3.  In HW units scaled by 2^16 in body frame
+* @return '0' for a successful load, '1' otherwise
+* example: int AccelLoadConfig(long* offset);
+* End of Vendor-defined Accel Load Cal Method
+*/
+
+static struct sensor_t sSensorList[LOCAL_SENSORS];
+static int sensors = (sizeof(sSensorList) / sizeof(sensor_t));
 
 static int open_sensors(const struct hw_module_t* module, const char* id,
                         struct hw_device_t** device);
@@ -48,7 +59,7 @@ static int sensors__get_sensors_list(struct sensors_module_t* module,
                                      struct sensor_t const** list)
 {
     *list = sSensorList;
-    return numSensors;
+    return sensors;
 }
 
 static struct hw_module_methods_t sensors_module_methods = {
@@ -81,6 +92,7 @@ private:
     enum {
         mpl = 0,
         compass,
+        dmpOrient,
         numSensorDrivers,   // wake pipe goes here
         numFds,
     };
@@ -95,14 +107,20 @@ private:
 sensors_poll_context_t::sensors_poll_context_t() {
     VFUNC_LOG;
 
-    CompassSensor *mCompassSensor = new CompassSensor();
+    mCompassSensor = new CompassSensor();
     MPLSensor *mplSensor = new MPLSensor(mCompassSensor);
+
+   /* For Vendor-defined Accel Calibration File Load
+    * Use the Following Constructor and Pass Your Load Cal File Function
+    *
+	* MPLSensor *mplSensor = new MPLSensor(mCompassSensor, AccelLoadConfig);
+	*/
 
     // setup the callback object for handing mpl callbacks
     setCallbackObject(mplSensor);
-    
+
     // populate the sensor list
-    numSensors =
+    sensors =
             mplSensor->populateSensorList(sSensorList, sizeof(sSensorList));
 
     mSensor = mplSensor;
@@ -113,6 +131,10 @@ sensors_poll_context_t::sensors_poll_context_t() {
     mPollFds[compass].fd = mCompassSensor->getFd();
     mPollFds[compass].events = POLLIN;
     mPollFds[compass].revents = 0;
+
+    mPollFds[dmpOrient].fd = ((MPLSensor*) mSensor)->getDmpOrientFd();
+    mPollFds[dmpOrient].events = POLLPRI;
+    mPollFds[dmpOrient].revents = 0;
 }
 
 sensors_poll_context_t::~sensors_poll_context_t() {
@@ -144,22 +166,16 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
 
     if (nb > 0) {
         for (int i = 0; count && i < numSensorDrivers; i++) {
-            if (mPollFds[i].revents & POLLIN) {
+            if (mPollFds[i].revents & (POLLIN | POLLPRI)) {
                 nb = 0;
                 if (i == mpl) {
-                    nb = mSensor->readEvents(data, count);
-                }
-                else if (i == compass) {
-                    nb = ((MPLSensor*) mSensor)->readCompassEvents(data, count);
-                }
-/*
-                if (nb > 0) {
-                    count -= nb;
-                    nbEvents += nb;
-                    data += nb;
+                    nb = mSensor->readEvents(NULL, 0);
                     mPollFds[i].revents = 0;
                 }
- */
+                else if (i == compass) {
+                    nb = ((MPLSensor*) mSensor)->readCompassEvents(NULL, 0);
+                    mPollFds[i].revents = 0;
+                }
             }
         }
         nb = ((MPLSensor*) mSensor)->executeOnData(data, count);
@@ -167,8 +183,16 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
             count -= nb;
             nbEvents += nb;
             data += nb;
-            mPollFds[mpl].revents = 0;
-            mPollFds[compass].revents = 0;
+        }
+
+        if (mPollFds[dmpOrient].revents & (POLLIN | POLLPRI)) {
+            nb = ((MPLSensor*) mSensor)->readDmpOrientEvents(data, count);
+            mPollFds[dmpOrient].revents= 0;
+            if (isDmpScreenAutoRotationEnabled() && nb > 0) {
+                count -= nb;
+                nbEvents += nb;
+                data += nb;
+            }
         }
     }
 

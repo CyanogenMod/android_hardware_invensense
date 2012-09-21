@@ -4,6 +4,7 @@
     See included License.txt for License information.
  $
  */
+
 /**
  *   @defgroup  Storage_Manager storage_manager
  *   @brief     Motion Library - Stores Data for functions.
@@ -13,6 +14,9 @@
  *       @file storage_manager.c
  *       @brief Load and Store Manager.
  */
+
+#include <string.h>
+
 #include "storage_manager.h"
 #include "log.h"
 #include "ml_math_func.h"

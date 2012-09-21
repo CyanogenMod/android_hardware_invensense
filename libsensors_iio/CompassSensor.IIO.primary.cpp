@@ -26,26 +26,35 @@
 #include <linux/input.h>
 #include <string.h>
 
-#include "CompassSensor.IIO.9150.h"
+#include "CompassSensor.IIO.primary.h"
 #include "sensors.h"
 #include "MPLSupport.h"
 #include "sensor_params.h"
 #include "ml_sysfs_helper.h"
+//#include "log.h"
 
 #define COMPASS_MAX_SYSFS_ATTRB sizeof(compassSysFs) / sizeof(char*)
 
-#if defined COMPASS_YAS53x
-#   warning "Invensense compass cal with YAS53x IIO on secondary bus"
-#   define USE_MPL_COMPASS_HAL          (1)
-#   define COMPASS_NAME                 "INV_YAS530"
-#elif defined COMPASS_AK8975
+#if defined COMPASS_AK8975
 #   warning "Invensense compass cal with AK8975 on primary bus"
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_AK8975"
 #elif defined INVENSENSE_COMPASS_CAL
-#   warning "Invensense compass cal with compass IIO on secondary bus"
+
+#if defined COMPASS_YAS53x
+#   warning "Invensense compass cal with YAS53x IIO on primary bus"
+#   define USE_MPL_COMPASS_HAL          (1)
+#   define COMPASS_NAME                 "yas53" // prefix for YAS53[023]
+#elif defined COMPASS_AMI306
+#   warning "Invensense compass cal with AMI306 IIO on primary bus"
+#   define USE_MPL_COMPASS_HAL          (1)
+#   define COMPASS_NAME                 "ami306"
+#else
+#   warning "Invensense compass cal with compass on secondary bus"
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_COMPASS"
+#endif
+
 #else
 #   warning "third party compass cal HAL"
 #   define USE_MPL_COMPASS_HAL          (0)
@@ -53,23 +62,45 @@
 #   define COMPASS_NAME                 "AKM8975"
 #endif
 
-
-/*****************************************************************************/
+/******************************************************************************/
 
 CompassSensor::CompassSensor()
-                  : SensorBase(NULL, NULL),
-                    compass_fd(-1),
+                  : SensorBase(COMPASS_NAME, NULL),
                     mCompassTimestamp(0),
                     mCompassInputReader(8)
+#ifdef COMPASS_YAS53x
+                    , mCoilsResetFd(0)
+#endif
 {
+    FILE *fptr;
+
     VFUNC_LOG;
 
-    if(inv_init_sysfs_attributes()) {
+    /*
+    char temp_sysfs_path[30];
+    inv_get_sysfs_path(temp_sysfs_path);
+    LOGI("sysfs: %s", temp_sysfs_path);
+    */
+
+#ifdef COMPASS_YAS53x
+    /* for YAS53x compasses, dev_name is just a prefix,
+       we need to find the actual name */
+    if (fill_dev_full_name_by_prefix(dev_name,
+            dev_full_name, sizeof(dev_full_name) / sizeof(dev_full_name[0]))) {
+        LOGE("Cannot find Yamaha device with prefix name '%s' - "
+             "magnetometer will likely not work.", dev_name);
+    }
+#else
+    strncpy(dev_full_name, dev_name,
+            sizeof(dev_full_name) / sizeof(dev_full_name[0]));
+#endif
+
+    if (inv_init_sysfs_attributes()) {
         LOGE("Error Instantiating Compass\n");
         return;
     }
 
-    if (!strcmp(COMPASS_NAME, "INV_COMPASS")) {
+    if (!strcmp(dev_full_name, "INV_COMPASS")) {
         mI2CBus = COMPASS_BUS_SECONDARY;
     } else {
         mI2CBus = COMPASS_BUS_PRIMARY;
@@ -77,9 +108,15 @@ CompassSensor::CompassSensor()
 
     memset(mCachedCompassData, 0, sizeof(mCachedCompassData));
 
+    if (!isIntegrated()) {
+        enable(ID_M, 0);
+    }
+
+    LOGV_IF(SYSFS_VERBOSE, "HAL:compass name: %s", dev_full_name);
+    enable_iio_sysfs();
+
     LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:cat %s (%lld)",
             compassSysFs.compass_orient, getTimestamp());
-    FILE *fptr;
     fptr = fopen(compassSysFs.compass_orient, "r");
     if (fptr != NULL) {
         int om[9];
@@ -106,9 +143,119 @@ CompassSensor::CompassSensor()
         LOGE("HAL:Couldn't read compass mounting matrix");
     }
 
-    if (!isIntegrated()) {
-        enable(ID_M, 0);
+#ifdef COMPASS_YAS53x
+    mCoilsResetFd = fopen(compassSysFs.compass_attr_1, "r+");
+    if (fptr == NULL) {
+        LOGE("HAL:Couldn't read compass overunderflow");
     }
+#endif
+}
+
+void CompassSensor::enable_iio_sysfs()
+{
+    VFUNC_LOG;
+
+    int tempFd = 0;
+    char iio_trigger_name[MAX_CHIP_ID_LEN], iio_device_node[MAX_CHIP_ID_LEN];
+    FILE *tempFp = NULL;
+    const char* compass = dev_full_name;
+
+    LOGV_IF(SYSFS_VERBOSE,
+            "HAL:sysfs:echo 1 > %s (%lld)",
+            compassSysFs.in_timestamp_en, getTimestamp());
+    tempFd = open(compassSysFs.in_timestamp_en, O_RDWR);
+    if(tempFd < 0) {
+        LOGE("HAL:could not open %s timestamp enable", compass);
+    } else if(enable_sysfs_sensor(tempFd, 1) < 0) {
+        LOGE("HAL:could not enable timestamp");
+    }
+
+    LOGV_IF(SYSFS_VERBOSE,
+            "HAL:sysfs:cat %s (%lld)",
+            compassSysFs.trigger_name, getTimestamp());
+    tempFp = fopen(compassSysFs.trigger_name, "r");
+    if (tempFp == NULL) {
+        LOGE("HAL:could not open %s trigger name", compass);
+    } else {
+        if (fscanf(tempFp, "%s", iio_trigger_name) < 0) {
+            LOGE("HAL:could not read trigger name");
+        }
+        fclose(tempFp);
+    }
+
+    LOGV_IF(SYSFS_VERBOSE,
+            "HAL:sysfs:echo %s > %s (%lld)",
+            iio_trigger_name, compassSysFs.current_trigger, getTimestamp());
+    tempFp = fopen(compassSysFs.current_trigger, "w");
+    if (tempFp == NULL) {
+        LOGE("HAL:could not open current trigger");
+    } else {
+        if (fprintf(tempFp, "%s", iio_trigger_name) < 0) {
+            LOGE("HAL:could not write current trigger");
+        }
+        fclose(tempFp);
+    }
+
+    LOGV_IF(SYSFS_VERBOSE,
+            "HAL:sysfs:echo %d > %s (%lld)",
+            IIO_BUFFER_LENGTH, compassSysFs.buffer_length, getTimestamp());
+    tempFp = fopen(compassSysFs.buffer_length, "w");
+    if (tempFp == NULL) {
+        LOGE("HAL:could not open buffer length");
+    } else {
+        if (fprintf(tempFp, "%d", IIO_BUFFER_LENGTH) < 0) {
+            LOGE("HAL:could not write buffer length");
+        }
+        fclose(tempFp);
+    }
+
+    sprintf(iio_device_node, "%s%d", "/dev/iio:device",
+            find_type_by_name(compass, "iio:device"));
+    compass_fd = open(iio_device_node, O_RDONLY);
+    int res = errno;
+    if (compass_fd < 0) {
+        LOGE("HAL:could not open '%s' iio device node in path '%s' - "
+             "error '%s' (%d)",
+             compass, iio_device_node, strerror(res), res);
+    } else {
+        LOGV_IF(EXTRA_VERBOSE,
+                "HAL:iio %s, compass_fd opened : %d", compass, compass_fd);
+    }
+
+    /* TODO: need further tests for optimization to reduce context-switch
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo 1 > %s (%lld)",
+            compassSysFs.compass_x_fifo_enable, getTimestamp());
+    tempFd = open(compassSysFs.compass_x_fifo_enable, O_RDWR);
+    res = errno;
+    if (tempFd > 0) {
+        res = enable_sysfs_sensor(tempFd, 1);
+    } else {
+        LOGE("HAL:open of %s failed with '%s' (%d)",
+             compassSysFs.compass_x_fifo_enable, strerror(res), res);
+    }
+
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo 1 > %s (%lld)",
+            compassSysFs.compass_y_fifo_enable, getTimestamp());
+    tempFd = open(compassSysFs.compass_y_fifo_enable, O_RDWR);
+    res = errno;
+    if (tempFd > 0) {
+        res = enable_sysfs_sensor(tempFd, 1);
+    } else {
+        LOGE("HAL:open of %s failed with '%s' (%d)",
+             compassSysFs.compass_y_fifo_enable, strerror(res), res);
+    }
+
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo 1 > %s (%lld)",
+            compassSysFs.compass_z_fifo_enable, getTimestamp());
+    tempFd = open(compassSysFs.compass_z_fifo_enable, O_RDWR);
+    res = errno;
+    if (tempFd > 0) {
+        res = enable_sysfs_sensor(tempFd, 1);
+    } else {
+        LOGE("HAL:open of %s failed with '%s' (%d)",
+             compassSysFs.compass_z_fifo_enable, strerror(res), res);
+    }
+    */
 }
 
 CompassSensor::~CompassSensor()
@@ -118,6 +265,10 @@ CompassSensor::~CompassSensor()
     free(pathP);
     if( compass_fd > 0)
         close(compass_fd);
+#ifdef COMPASS_YAS53x
+    if( mCoilsResetFd != NULL )
+        fclose(mCoilsResetFd);
+#endif
 }
 
 int CompassSensor::getFd() const
@@ -143,18 +294,11 @@ int CompassSensor::enable(int32_t handle, int en)
     int tempFd;
     int res;
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-            en, compassSysFs.compass_enable, getTimestamp());
-    tempFd = open(compassSysFs.compass_enable, O_RDWR);
-    res = errno;
-    if(tempFd < 0) {
-        LOGE("HAL:open of %s failed with '%s' (%d)",
-             compassSysFs.compass_enable, strerror(res), res);
+    /* reset master enable */
+    res = masterEnable(0);
+    if (res < 0) {
         return res;
     }
-    res = enable_sysfs_sensor(tempFd, en);
-    LOGE_IF(res < 0, "HAL:enable compass failed");
-    close(tempFd);
 
     if (en) {
         LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
@@ -163,7 +307,6 @@ int CompassSensor::enable(int32_t handle, int en)
         res = errno;
         if (tempFd > 0) {
             res = enable_sysfs_sensor(tempFd, en);
-            close(tempFd);
         } else {
             LOGE("HAL:open of %s failed with '%s' (%d)",
                  compassSysFs.compass_x_fifo_enable, strerror(res), res);
@@ -175,7 +318,6 @@ int CompassSensor::enable(int32_t handle, int en)
         res = errno;
         if (tempFd > 0) {
             res = enable_sysfs_sensor(tempFd, en);
-            close(tempFd);
         } else {
             LOGE("HAL:open of %s failed with '%s' (%d)",
                  compassSysFs.compass_y_fifo_enable, strerror(res), res);
@@ -187,13 +329,35 @@ int CompassSensor::enable(int32_t handle, int en)
         res = errno;
         if (tempFd > 0) {
             res = enable_sysfs_sensor(tempFd, en);
-            close(tempFd);
         } else {
             LOGE("HAL:open of %s failed with '%s' (%d)",
                  compassSysFs.compass_z_fifo_enable, strerror(res), res);
         }
+
+        res = masterEnable(en);
+        if (res < en) {
+            return res;
+        }
     }
 
+    return res;
+}
+
+int CompassSensor::masterEnable(int en) {
+    VFUNC_LOG;
+
+    int res = 0;
+
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+            en, compassSysFs.chip_enable, getTimestamp());
+    int tempFd = open(compassSysFs.chip_enable, O_RDWR);
+    res = errno;
+    if(tempFd < 0){
+        LOGE("HAL:open of %s failed with '%s' (%d)",
+             compassSysFs.chip_enable, strerror(res), res);
+        return res;
+    }
+    res = enable_sysfs_sensor(tempFd, en);
     return res;
 }
 
@@ -215,7 +379,6 @@ int CompassSensor::setDelay(int32_t handle, int64_t ns)
     }
     return res;
 }
-
 
 /**
     @brief      This function will return the state of the sensor.
@@ -277,36 +440,31 @@ long CompassSensor::getSensitivity()
     @para[in]      timestamp data's timestamp
     @return        1, if 1   sample read, 0, if not, negative if error
  */
-int CompassSensor::readSample(long *data, int64_t *timestamp)
-{
-    VHANDLER_LOG;
+int CompassSensor::readSample(long *data, int64_t *timestamp) {
+    VFUNC_LOG;
 
-    int numEventReceived = 0, done = 0;
+    int i;
+    char *rdata = mIIOBuffer;
 
-    ssize_t n = mCompassInputReader.fill(compass_fd);
-    if (n < 0) {
-        LOGE("HAL:no compass events read");
-        return n;
+    size_t rsize = read(compass_fd, rdata, (8 * mEnable + 8) * 1);
+
+    if (!mEnable) {
+        rsize = read(compass_fd, rdata, (8 + 8) * IIO_BUFFER_LENGTH);
+        // LOGI("clear buffer with size: %d", rsize);
     }
-
-    input_event const* event;
-
-    while (done == 0 && mCompassInputReader.readEvent(&event)) {
-        int type = event->type;
-        if (type == EV_REL) {
-            processCompassEvent(event);
-        } else if (type == EV_SYN) {
-            *timestamp = mCompassTimestamp;
-            memcpy(data, mCachedCompassData, sizeof(mCachedCompassData));
-            done = 1;
-        } else {
-            LOGE("HAL:Compass Sensor: unknown event (type=%d, code=%d)",
-                 type, event->code);
+/*
+    LOGI("get one sample of AMI IIO data with size: %d", rsize);
+    LOGI_IF(mEnable, "compass x/y/z: %d/%d/%d", *((short *) (rdata + 0)),
+        *((short *) (rdata + 2)), *((short *) (rdata + 4)));
+*/
+    if (mEnable) {
+        for (i = 0; i < 3; i++) {
+            data[i] = *((short *) (rdata + i * 2));
         }
-        mCompassInputReader.next();
+        *timestamp = *((long long *) (rdata + 8 * mEnable));
     }
 
-    return done;
+    return mEnable;
 }
 
 /**
@@ -323,7 +481,7 @@ void CompassSensor::fillList(struct sensor_t *list)
 {
     VFUNC_LOG;
 
-    const char *compass = COMPASS_NAME;
+    const char *compass = dev_full_name;
 
     if (compass) {
         if(!strcmp(compass, "INV_COMPASS")) {
@@ -334,25 +492,27 @@ void CompassSensor::fillList(struct sensor_t *list)
             return;
         }
         if(!strcmp(compass, "compass")
-                || !strcmp(compass, "INV_AK8975") ) {
+                || !strcmp(compass, "INV_AK8975")) {
             list->maxRange = COMPASS_AKM8975_RANGE;
             list->resolution = COMPASS_AKM8975_RESOLUTION;
             list->power = COMPASS_AKM8975_POWER;
             list->minDelay = COMPASS_AKM8975_MINDELAY;
             return;
         }
-        if(!strcmp(compass, "INV_YAS530")) {
-            list->maxRange = COMPASS_YAS53x_RANGE;
-            list->resolution = COMPASS_YAS53x_RESOLUTION;
-            list->power = COMPASS_YAS53x_POWER;
-            list->minDelay = COMPASS_YAS53x_MINDELAY;
-            return;
-        }
-        if(!strcmp(compass, "INV_AMI306")) {
+        if(!strcmp(compass, "ami306")) {
             list->maxRange = COMPASS_AMI306_RANGE;
             list->resolution = COMPASS_AMI306_RESOLUTION;
             list->power = COMPASS_AMI306_POWER;
             list->minDelay = COMPASS_AMI306_MINDELAY;
+            return;
+        }
+        if(!strcmp(compass, "yas530")
+                || !strcmp(compass, "yas532")
+                || !strcmp(compass, "yas533")) {
+            list->maxRange = COMPASS_YAS53x_RANGE;
+            list->resolution = COMPASS_YAS53x_RESOLUTION;
+            list->power = COMPASS_YAS53x_POWER;
+            list->minDelay = COMPASS_YAS53x_MINDELAY;
             return;
         }
     }
@@ -366,15 +526,48 @@ void CompassSensor::fillList(struct sensor_t *list)
     list->minDelay = COMPASS_AKM8975_MINDELAY;
 }
 
+#ifdef COMPASS_YAS53x
+/* Read sysfs entry to determine whether overflow had happend
+   then write to sysfs to reset to zero */
+int CompassSensor::checkCoilsReset()
+{
+    int result=-1;
+    VFUNC_LOG;
+
+    if(mCoilsResetFd != NULL) {
+        int attr;
+        rewind(mCoilsResetFd);
+        fscanf(mCoilsResetFd, "%d", &attr);
+        if(attr == 0)
+            return 0;
+        else {
+            LOGV_IF(SYSFS_VERBOSE, "HAL:overflow detected");
+            rewind(mCoilsResetFd);
+            if( fprintf(mCoilsResetFd, "%d", 0) < 0) {
+                LOGE("HAL:could not write overunderflow");
+            }
+            else
+                return 1;
+        }
+    }
+    else {
+        LOGE("HAL:could not read overunderflow");
+    }
+    return result;
+}
+#endif
+
 int CompassSensor::inv_init_sysfs_attributes(void)
 {
     VFUNC_LOG;
 
     unsigned char i = 0;
-    char sysfs_path[MAX_SYSFS_NAME_LEN], iio_trigger_path[MAX_SYSFS_NAME_LEN], tbuf[2];
+    char sysfs_path[MAX_SYSFS_NAME_LEN],
+         iio_trigger_path[MAX_SYSFS_NAME_LEN], tbuf[2];
     char *sptr;
     char **dptr;
     int num;
+    const char* compass = dev_full_name;
 
     pathP = (char*)malloc(
                     sizeof(char[COMPASS_MAX_SYSFS_ATTRB][MAX_SYSFS_NAME_LEN]));
@@ -388,13 +581,14 @@ int CompassSensor::inv_init_sysfs_attributes(void)
         sptr += sizeof(char[MAX_SYSFS_NAME_LEN]);
     } while (++i < COMPASS_MAX_SYSFS_ATTRB);
 
-    // get proper (in absolute/relative) IIO path & build MPU's sysfs paths
-    // inv_get_sysfs_abs_path(sysfs_path);
-    inv_get_sysfs_path(sysfs_path);
-    inv_get_iio_trigger_path(iio_trigger_path);
+    // get proper (in absolute/relative) IIO path & build sysfs paths
+    sprintf(sysfs_path, "%s%d", "/sys/bus/iio/devices/iio:device",
+        find_type_by_name(compass, "iio:device"));
+    sprintf(iio_trigger_path, "%s%d", "/sys/bus/iio/devices/trigger",
+        find_type_by_name(compass, "iio:device"));
 
 #if defined COMPASS_AK8975
-    inv_get_input_number(COMPASS_NAME, &num);
+    inv_get_input_number(compass, &num);
     tbuf[0] = num + 0x30;
     tbuf[1] = 0;
     sprintf(sysfs_path, "%s%s", "sys/class/input/input", tbuf);
@@ -404,19 +598,30 @@ int CompassSensor::inv_init_sysfs_attributes(void)
     sprintf(compassSysFs.compass_rate, "%s%s", sysfs_path, "/rate");
     sprintf(compassSysFs.compass_scale, "%s%s", sysfs_path, "/scale");
     sprintf(compassSysFs.compass_orient, "%s%s", sysfs_path, "/compass_matrix");
-#else
-    sprintf(compassSysFs.compass_enable, "%s%s", sysfs_path, "/compass_enable");
+#else /* IIO */
+    sprintf(compassSysFs.chip_enable, "%s%s", sysfs_path, "/buffer/enable");
+    sprintf(compassSysFs.in_timestamp_en, "%s%s", sysfs_path, "/scan_elements/in_timestamp_en");
+    sprintf(compassSysFs.trigger_name, "%s%s", iio_trigger_path, "/name");
+    sprintf(compassSysFs.current_trigger, "%s%s", sysfs_path, "/trigger/current_trigger");
+    sprintf(compassSysFs.buffer_length, "%s%s", sysfs_path, "/buffer/length");
+
     sprintf(compassSysFs.compass_x_fifo_enable, "%s%s", sysfs_path, "/scan_elements/in_magn_x_en");
     sprintf(compassSysFs.compass_y_fifo_enable, "%s%s", sysfs_path, "/scan_elements/in_magn_y_en");
     sprintf(compassSysFs.compass_z_fifo_enable, "%s%s", sysfs_path, "/scan_elements/in_magn_z_en");
     sprintf(compassSysFs.compass_rate, "%s%s", sysfs_path, "/sampling_frequency");
     sprintf(compassSysFs.compass_scale, "%s%s", sysfs_path, "/in_magn_scale");
     sprintf(compassSysFs.compass_orient, "%s%s", sysfs_path, "/compass_matrix");
+
+#if defined COMPASS_YAS53x
+    sprintf(compassSysFs.compass_attr_1, "%s%s", sysfs_path, "/overunderflow");
+#endif
 #endif
 
 #if 0
     // test print sysfs paths
     dptr = (char**)&compassSysFs;
+    LOGI("sysfs path base: %s", sysfs_path);
+    LOGI("trigger sysfs path base: %s", iio_trigger_path);
     for (i = 0; i < COMPASS_MAX_SYSFS_ATTRB; i++) {
         LOGE("HAL:sysfs path: %s", *dptr++);
     }

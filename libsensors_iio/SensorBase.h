@@ -22,9 +22,42 @@
 #include <sys/cdefs.h>
 #include <sys/types.h>
 
+#if defined ANDROID_JELLYBEAN
+#warning "build for Jellybean"
+#define LOGV_IF ALOGV_IF
+#define LOGE_IF ALOGE_IF
+#define LOGI ALOGI
+#define LOGE ALOGE
+#define LOGV ALOGV
+#define LOGW ALOGW
+#else
+#warning "build for ICS or earlier version"
+#endif
+
+/* Log enablers, each of these independent */
+
+#define PROCESS_VERBOSE (0) /* process log messages */
+#define EXTRA_VERBOSE   (0) /* verbose log messages */
+#define SYSFS_VERBOSE   (0) /* log sysfs interactions as cat/echo for repro
+                               purpose on a shell */
+#define FUNC_ENTRY      (0) /* log entry in all one-time functions */
+
+/* Note that enabling this logs may affect performance */
+#define HANDLER_ENTRY   (0) /* log entry in all handler functions */
+#define ENG_VERBOSE     (0) /* log some a lot more info about the internals */
+#define INPUT_DATA      (0) /* log the data input from the events */
+#define HANDLER_DATA    (0) /* log the data fetched from the handlers */
+
+#define FUNC_LOG \
+            LOGV("%s", __PRETTY_FUNCTION__)
+#define VFUNC_LOG \
+            LOGV_IF(FUNC_ENTRY, "Entering function '%s'", __PRETTY_FUNCTION__)
+#define VHANDLER_LOG \
+            LOGV_IF(HANDLER_ENTRY, "Entering handler '%s'", __PRETTY_FUNCTION__)
 #define CALL_MEMBER_FN(pobject, ptrToMember) ((pobject)->*(ptrToMember))
 
 #define MAX_SYSFS_NAME_LEN  (100)
+#define IIO_BUFFER_LENGTH   (480)
 
 /*****************************************************************************/
 

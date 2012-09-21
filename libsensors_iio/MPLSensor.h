@@ -28,17 +28,18 @@
 #include "SensorBase.h"
 #include "InputEventReader.h"
 
-// TODO: change to wanted vendor
 #ifdef INVENSENSE_COMPASS_CAL
 
-#ifdef COMPASS_AMI306
+#ifdef COMPASS_YAS53x
+#warning "unified HAL for YAS53x"
+#include "CompassSensor.IIO.primary.h"
+#elif COMPASS_AMI306
 #warning "unified HAL for AMI306"
-#include "CompassSensor.IIO.AMI.h"
+#include "CompassSensor.IIO.primary.h"
 #else
 #warning "unified HAL for MPU9150"
 #include "CompassSensor.IIO.9150.h"
 #endif
-
 #else
 #warning "unified HAL for AKM"
 #include "CompassSensor.AKM.h"
@@ -48,7 +49,6 @@
 /* Sensors Enable/Disable Mask
  *****************************************************************************/
 #define MAX_CHIP_ID_LEN             (20)
-#define IIO_BUFFER_LENGTH           (100 * 2)
 
 #define INV_THREE_AXIS_GYRO         (0x000F)
 #define INV_THREE_AXIS_ACCEL        (0x0070)
@@ -60,7 +60,6 @@
                                       | INV_THREE_AXIS_COMPASS \
                                       | INV_THREE_AXIS_GYRO)
 #else
-// TODO: ID_M = 2 even for 3rd-party solution
 #define ALL_MPL_SENSORS_NP          (INV_THREE_AXIS_ACCEL \
                                       | INV_THREE_AXIS_COMPASS \
                                       | INV_THREE_AXIS_GYRO)
@@ -70,32 +69,69 @@
 #define INV_COMPASS_CAL              0x01
 #define INV_COMPASS_FIT              0x02
 #define INV_DMP_QUATERNION           0x04
+#define INV_DMP_DISPL_ORIENTATION    0x08
+
+/* Uncomment to enable Low Power Quaternion */
+//#define ENABLE_LP_QUAT_FEAT
+
+/* Uncomment to enable DMP display orientation
+   (within the HAL, see below for Java framework) */
+//#define ENABLE_DMP_DISPL_ORIENT_FEAT
+
+#ifdef ENABLE_DMP_DISPL_ORIENT_FEAT
+/* Uncomment following to expose the SENSOR_TYPE_SCREEN_ORIENTATION
+   sensor type (DMP screen orientation) to the Java framework.
+   NOTE:
+       need Invensense customized
+       'hardware/libhardware/include/hardware/sensors.h' to compile correctly.
+   NOTE:
+       need Invensense java framework changes to:
+       'frameworks/base/core/java/android/view/WindowOrientationListener.java'
+       'frameworks/base/core/java/android/hardware/Sensor.java'
+       'frameworks/base/core/java/android/hardware/SensorEvent.java'
+       for the 'Auto-rotate screen' to use this feature.
+*/
+#define ENABLE_DMP_SCREEN_AUTO_ROTATION
+#warning "ENABLE_DMP_DISPL_ORIENT_FEAT is defined, framework changes are necessary for HAL to work properly"
+#endif
+
+int isDmpScreenAutoRotationEnabled()
+{
+#ifdef ENABLE_DMP_SCREEN_AUTO_ROTATION
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+int (*m_pt2AccelCalLoadFunc)(long *bias) = NULL;
 
 /*****************************************************************************/
 /** MPLSensor implementation which fits into the HAL example for crespo provided
  *  by Google.
  *  WARNING: there may only be one instance of MPLSensor, ever.
  */
- 
+
 class MPLSensor: public SensorBase
 {
     typedef int (MPLSensor::*hfunc_t)(sensors_event_t*);
 
 public:
-    MPLSensor(CompassSensor *);
-    virtual ~MPLSensor();
 
-    enum
-    {
+    enum {
         Gyro = 0,
+        RawGyro,
         Accelerometer,
         MagneticField,
         Orientation,
         RotationVector,
         LinearAccel,
         Gravity,
-        numSensors
+        NUMSENSORS
     };
+
+    MPLSensor(CompassSensor *, int (*m_pt2AccelCalLoadFunc)(long*) = 0);
+    virtual ~MPLSensor();
 
     virtual int setDelay(int32_t handle, int64_t ns);
     virtual int enable(int32_t handle, int enabled);
@@ -112,9 +148,6 @@ public:
     int populateSensorList(struct sensor_t *list, int len);
     void cbProcData();
 
-    // Do not work with this object unless it is initialized
-    bool isValid() { return mMplSensorInitialized; };
-
     //static pointer to the object that will handle callbacks
     static MPLSensor* gMPLSensor;
 
@@ -124,13 +157,22 @@ public:
     int readAccelEvents(sensors_event_t* data, int count);
     int readCompassEvents(sensors_event_t* data, int count);
 
+    int turnOffAccelFifo();
+    int enableDmpOrientation(int);
+    int dmpOrientHandler(int);
+    int readDmpOrientEvents(sensors_event_t* data, int count);
+    int getDmpOrientFd();
+    int openDmpOrientFd();
+    int closeDmpOrientFd();
+
+    int getDmpRate(int64_t *);
+    int checkDMPOrientation();
+
 protected:
-    // Lets us know if the constructor was actually able to finish its job.
-    // E.g. false if init sysfs failed.
-    bool mMplSensorInitialized;
     CompassSensor *mCompassSensor;
 
     int gyroHandler(sensors_event_t *data);
+    int rawGyroHandler(sensors_event_t *data);
     int accelHandler(sensors_event_t *data);
     int compassHandler(sensors_event_t *data);
     int rvHandler(sensors_event_t *data);
@@ -156,7 +198,6 @@ protected:
     void computeLocalSensorMask(int enabled_sensors);
     int enableSensors(unsigned long sensors, int en, uint32_t changed);
     int inv_read_gyro_buffer(int fd, short *data, long long *timestamp);
-    int update_delay_sysfs_sensor(int fd, uint64_t ns);
     int inv_float_to_q16(float *fdata, long *ldata);
     int inv_long_to_q16(long *fdata, long *ldata);
     int inv_float_to_round(float *fdata, long *ldata);
@@ -166,6 +207,9 @@ protected:
     int inv_read_sensor_bias(int fd, long *data);
     void inv_get_sensors_orientation(void);
     int inv_init_sysfs_attributes(void);
+#ifdef COMPASS_YAS53x
+    int resetCompass(void);
+#endif
     void setCompassDelay(int64_t ns);
     void enable_iio_sysfs(void);
     int enableTap(int);
@@ -181,6 +225,7 @@ protected:
     bool mHaveGoodMpuCal;   // flag indicating that the cal file can be written
     int mGyroAccuracy;      // value indicating the quality of the gyro calibr.
     int mAccelAccuracy;     // value indicating the quality of the accel calibr.
+    int mCompassAccuracy;     // value indicating the quality of the compass calibr.
     struct pollfd mPollFds[5];
     int mSampleCount;
     pthread_mutex_t mMplMutex;
@@ -193,11 +238,14 @@ protected:
     int mpufifo_fd;
     int gyro_temperature_fd;
 
+    int dmp_orient_fd;
+    int mDmpOrientationEnabled;
+
     uint32_t mEnabled;
     uint32_t mOldEnabledMask;
-    sensors_event_t mPendingEvents[numSensors];
-    uint64_t mDelays[numSensors];
-    hfunc_t mHandlers[numSensors];
+    sensors_event_t mPendingEvents[NUMSENSORS];
+    int64_t mDelays[NUMSENSORS];
+    hfunc_t mHandlers[NUMSENSORS];
     short mCachedGyroData[3];
     long mCachedAccelData[3];
     long mCachedCompassData[3];
@@ -231,11 +279,12 @@ protected:
        char *firmware_loaded;
        char *dmp_on;
        char *dmp_int_on;
+       char *dmp_event_int_on;
+       char *dmp_output_rate;
        char *tap_on;
        char *key;
        char *self_test;
        char *temperature;
-       char *dmp_output_rate;
 
        char *gyro_enable;
        char *gyro_fifo_rate;
@@ -263,6 +312,9 @@ protected:
        char *trigger_name;
        char *current_trigger;
        char *buffer_length;
+
+       char *display_orientation_on;
+       char *event_display_orientation;
     } mpu;
 
     char *sysfs_names_ptr;
@@ -278,6 +330,11 @@ private:
     void fillLinearAccel(struct sensor_t *list);
     void storeCalibration();
     void loadDMP();
+    bool isMpu3050();
+    int isLowPowerQuatEnabled();
+    int isDmpDisplayOrientationOn();
+
+
 };
 
 extern "C" {

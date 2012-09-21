@@ -56,6 +56,7 @@ extern "C" {
 #define INV_PRIORITY_INUSE_AUTO_CALIBRATION    850
 #define INV_PRIORITY_HAL_OUTPUTS               900
 #define INV_PRIORITY_GLYPH                     950
+#define INV_PRIORITY_SHAKE                     975
 #define INV_PRIORITY_SM                        1000
 
 struct inv_single_sensor_t {
@@ -69,6 +70,8 @@ struct inv_single_sensor_t {
     int orientation;
     /** The raw data in raw data units in the mounting frame */
     short raw[3];
+    /** Raw data in body frame */
+    long raw_scaled[3];
     /** Calibrated data */
     long calibrated[3];
     long sensitivity;
@@ -160,6 +163,10 @@ void inv_set_gyro_bandwidth(int bandwidth_hz);
 void inv_set_accel_bandwidth(int bandwidth_hz);
 void inv_set_compass_bandwidth(int bandwidth_hz);
 
+void inv_get_gyro_sample_rate_ms(long *sample_rate_ms);
+void inv_get_accel_sample_rate_ms(long *sample_rate_ms);
+void inv_get_compass_sample_rate_ms(long *sample_rate_ms);
+
 inv_error_t inv_register_data_cb(inv_error_t (*func)
                                  (struct inv_sensor_cal_t * data), int priority,
                                  int sensor_type);
@@ -181,6 +188,7 @@ void inv_set_compass_bias(const long *bias, int accuracy);
 void inv_set_compass_disturbance(int dist);
 void inv_set_gyro_bias(const long *bias, int accuracy);
 void inv_set_accel_bias(const long *bias, int accuracy);
+void inv_set_accel_accuracy(int accuracy);
 void inv_set_accel_bias_mask(const long *bias, int accuracy, int mask);
 
 void inv_get_gyro_bias(long *bias, long *temp);
@@ -197,6 +205,7 @@ long inv_get_compass_sensitivity(void);
 
 void inv_get_accel_set(long *data, int8_t *accuracy, inv_time_t * timestamp);
 void inv_get_gyro_set(long *data, int8_t *accuracy, inv_time_t * timestamp);
+void inv_get_gyro_set_raw(long *data, int8_t *accuracy, inv_time_t * timestamp);
 void inv_get_compass_set(long *data, int8_t *accuracy, inv_time_t * timestamp);
 
 void inv_get_gyro(long *gyro);

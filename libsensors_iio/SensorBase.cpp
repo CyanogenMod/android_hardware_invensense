@@ -25,7 +25,6 @@
 #include <linux/input.h>
 
 #include "SensorBase.h"
-#include "local_log_def.h"
 
 /*****************************************************************************/
 

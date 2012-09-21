@@ -22,9 +22,9 @@ LIB_FOLDERS  = $(INV_ROOT)/core/mllite/build/$(TARGET)
 ifeq ($(BUILD_MPL),1)
 	LIB_FOLDERS += $(INV_ROOT)/core/mpl/build/$(TARGET)
 endif
-APP_FOLDERS  = $(INV_ROOT)/simple_apps/console/linux/build/$(TARGET)
-APP_FOLDERS += $(INV_ROOT)/simple_apps/input_sub/build/$(TARGET)
+APP_FOLDERS  = $(INV_ROOT)/simple_apps/mpu_iio/build/$(TARGET)
 APP_FOLDERS += $(INV_ROOT)/simple_apps/self_test/build/$(TARGET)
+APP_FOLDERS += $(INV_ROOT)/simple_apps/gesture_test/build/$(TARGET)
 
 INSTALL_DIR = $(CURDIR)
 

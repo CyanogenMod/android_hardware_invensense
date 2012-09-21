@@ -24,6 +24,13 @@
 extern "C" {
 #endif
 
+     typedef struct {
+        float state[4];
+        float c[5];
+        float input;
+        float output;
+    }   inv_biquad_filter_t;
+
     static inline float inv_q30_to_float(long q30)
     {
         return (float) q30 / ((float)(1L << 30));
@@ -101,6 +108,11 @@ extern "C" {
 
     double quaternion_to_rotation_angle(const long *quat);
     double inv_vector_norm(const float *x);
+
+    void inv_init_biquad_filter(inv_biquad_filter_t *pFilter, float *pBiquadCoeff);
+    float inv_biquad_filter_process(inv_biquad_filter_t *pFilter, float input);
+    void inv_calc_state_to_match_output(inv_biquad_filter_t *pFilter, float input);
+    void inv_get_cross_product_vec(float *cgcross, float compass[3], float grav[3]);
 
 #ifdef __cplusplus
 }
