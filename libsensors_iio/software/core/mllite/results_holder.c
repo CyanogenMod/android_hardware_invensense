@@ -13,16 +13,13 @@
  *       @file results_holder.c
  *       @brief Results Holder for HAL.
  */
-
-#include <string.h>
-
 #include "results_holder.h"
+#include "log.h"
 #include "ml_math_func.h"
 #include "mlmath.h"
 #include "start_manager.h"
 #include "data_builder.h"
 #include "message_layer.h"
-#include "log.h"
 
 // These 2 status bits are used to control when the 9 axis quaternion is updated
 #define INV_COMPASS_CORRECTION_SET 1
@@ -37,7 +34,6 @@ struct results_t {
     long mag_scale[3]; /**< scale factor to apply to magnetic field reading */
     long compass_correction[4]; /**< quaternion going from gyro,accel quaternion to 9 axis */
     int acc_state; /**< Describes accel state */
-    int got_accel_bias; /**< Flag describing if accel bias is known */
     long compass_bias_error[3]; /**< Error Squared */
     unsigned char motion_state;
     unsigned int motion_state_counter; /**< Incremented for each no motion event in a row */
@@ -320,24 +316,6 @@ inv_error_t inv_enable_results_holder()
 
     result = inv_register_mpl_start_notification(inv_start_results_holder);
     return result;
-}
-
-/** Sets state of if we know the accel bias.
- * @return return 1 if we know the accel bias, 0 if not.
- *            it is set with inv_set_accel_bias_found()
- */
-int inv_got_accel_bias()
-{
-    return rh.got_accel_bias;
-}
-
-/** Sets whether we know the accel bias
- * @param[in] state Set to 1 if we know the accel bias. 
- *            Can be retrieved with inv_got_accel_bias()
- */
-void inv_set_accel_bias_found(int state)
-{
-    rh.got_accel_bias = state;
 }
 
 /** Sets state of if we know the compass bias.

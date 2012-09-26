@@ -35,17 +35,24 @@ __BEGIN_DECLS
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #endif
 
-enum {
-    ID_GY = 0,
-    ID_RG,
-    ID_A,
-    ID_M,
-    ID_O,
-    ID_RV,
-    ID_LA,
-    ID_GR,
-    ID_SO
-};
+#define ID_MPL_BASE (0)
+#define ID_GY (ID_MPL_BASE)
+#define ID_A  (ID_GY + 1)
+#define ID_M  (ID_A + 1)
+#define ID_O  (ID_M + 1)
+#define ID_RV (ID_O + 1)
+#define ID_LA (ID_RV + 1)
+#define ID_GR (ID_LA + 1)
+
+/*#define ID_MPL_BASE (0)
+#define ID_RV (ID_MPL_BASE)
+#define ID_LA (ID_RV + 1)
+#define ID_GR (ID_LA + 1)
+#define ID_GY (ID_GR + 1)
+#define ID_A  (ID_GY + 1)
+#define ID_M  (ID_A + 1)
+#define ID_O  (ID_M + 1)
+*/
 
 /*****************************************************************************/
 

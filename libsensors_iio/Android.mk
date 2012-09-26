@@ -15,28 +15,26 @@
 
 LOCAL_PATH := $(call my-dir)
 
+ifneq ($(TARGET_SIMULATOR),true)
+
 # InvenSense fragment of the HAL
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := libinvensense_hal
 
 LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_OWNER := invensense
+
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
 
-VERSION_JB := true
-ifeq ($(VERSION_JB),true)
-LOCAL_CFLAGS += -DANDROID_JELLYBEAN
-endif
-ifeq ($(TARGET_BUILD_VARIANT),userdebug)
+ifeq ($(ENG_BUILD),1)
 ifeq ($(COMPILE_INVENSENSE_COMPASS_CAL),1)
 LOCAL_CFLAGS += -DINVENSENSE_COMPASS_CAL
 endif
 ifeq ($(COMPILE_THIRD_PARTY_ACCEL),1)
 LOCAL_CFLAGS += -DTHIRD_PARTY_ACCEL
 endif
-ifeq ($(COMPILE_COMPASS_YAS53x),1)
-LOCAL_CFLAGS += -DCOMPASS_YAS53x
+ifeq ($(COMPILE_COMPASS_YAS530),1)
+LOCAL_CFLAGS += -DCOMPASS_YAS530
 endif
 ifeq ($(COMPILE_COMPASS_AK8975),1)
 LOCAL_CFLAGS += -DCOMPASS_AK8975
@@ -48,31 +46,13 @@ else # release builds, default
 LOCAL_CFLAGS += -DINVENSENSE_COMPASS_CAL
 endif
 
-
-LOCAL_SRC_FILES += SensorBase.cpp
+LOCAL_SRC_FILES := SensorBase.cpp
 LOCAL_SRC_FILES += MPLSensor.cpp
 LOCAL_SRC_FILES += MPLSupport.cpp
 LOCAL_SRC_FILES += InputEventReader.cpp
-
-
-ifeq ($(TARGET_BUILD_VARIANT),userdebug)
-ifeq ($(COMPILE_INVENSENSE_COMPASS_CAL),1)
-ifeq ($(COMPILE_COMPASS_AMI306),1)
-LOCAL_SRC_FILES += CompassSensor.IIO.primary.cpp
-else ifeq ($(COMPILE_COMPASS_YAS53x),1)
-LOCAL_SRC_FILES += CompassSensor.IIO.primary.cpp
-else
 LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
-endif
-else # COMPILE_INVENSENSE_COMPASS_CAL = 0
-# choose corresponding 3rd-party compass sensor file
-LOCAL_SRC_FILES += AkmSensor.cpp
-LOCAL_SRC_FILES += CompassSensor.AKM.cpp
-endif
-else # release builds, default
-LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
-endif #userdebug
 
+LOCAL_C_INCLUDES += $(LOCAL_PATH)
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite/linux
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include
@@ -83,6 +63,7 @@ LOCAL_SHARED_LIBRARIES += libcutils
 LOCAL_SHARED_LIBRARIES += libutils
 LOCAL_SHARED_LIBRARIES += libdl
 LOCAL_SHARED_LIBRARIES += libmllite
+
 #Additions for SysPed
 LOCAL_SHARED_LIBRARIES += libmplmpu
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mpl
@@ -91,70 +72,10 @@ LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
 
-# Build a temporary HAL that links the InvenSense .so
-include $(CLEAR_VARS)
-ifneq ($(filter manta grouper tilapia, $(TARGET_DEVICE)),)
-LOCAL_MODULE := sensors.invensense
-else
-LOCAL_MODULE := sensors.${TARGET_PRODUCT}
-endif
-LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
-
-LOCAL_SHARED_LIBRARIES += libmplmpu
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite/linux
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mpl
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include/linux
-
-LOCAL_PRELINK_MODULE := false
-LOCAL_MODULE_TAGS := optional
-LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
-
-ifeq ($(VERSION_JB),true)
-LOCAL_CFLAGS += -DANDROID_JELLYBEAN
-endif
-
-ifeq ($(TARGET_BUILD_VARIANT),userdebug)
-ifeq ($(COMPILE_INVENSENSE_COMPASS_CAL),1)
-LOCAL_CFLAGS += -DINVENSENSE_COMPASS_CAL
-endif
-ifeq ($(COMPILE_THIRD_PARTY_ACCEL),1)
-LOCAL_CFLAGS += -DTHIRD_PARTY_ACCEL
-endif
-ifeq ($(COMPILE_COMPASS_YAS53x),1)
-LOCAL_CFLAGS += -DCOMPASS_YAS53x
-endif
-ifeq ($(COMPILE_COMPASS_AK8975),1)
-LOCAL_CFLAGS += -DCOMPASS_AK8975
-endif
-ifeq ($(COMPILE_COMPASS_AMI306),1)
-LOCAL_CFLAGS += -DCOMPASS_AMI306
-endif
-else # release builds, default
-LOCAL_CFLAGS += -DINVENSENSE_COMPASS_CAL
-endif # userdebug
-
-ifneq ($(filter manta grouper tilapia, $(TARGET_DEVICE)),)
-#LOCAL_SRC_FILES := sensors_mpl.cpp
-else
-LOCAL_SRC_FILES := sensors_mpl.cpp
-endif
-
-
-LOCAL_SHARED_LIBRARIES := libinvensense_hal
-LOCAL_SHARED_LIBRARIES += libcutils
-LOCAL_SHARED_LIBRARIES += libutils
-LOCAL_SHARED_LIBRARIES += libdl
-LOCAL_SHARED_LIBRARIES += liblog
-LOCAL_SHARED_LIBRARIES += libmllite
-include $(BUILD_SHARED_LIBRARY)
-
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmplmpu
 LOCAL_SRC_FILES := libmplmpu.so
 LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_OWNER := invensense
 LOCAL_MODULE_SUFFIX := .so
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 LOCAL_MODULE_PATH := $(TARGET_OUT)/lib
@@ -165,9 +86,10 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libmllite
 LOCAL_SRC_FILES := libmllite.so
 LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_OWNER := invensense
 LOCAL_MODULE_SUFFIX := .so
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 LOCAL_MODULE_PATH := $(TARGET_OUT)/lib
 OVERRIDE_BUILT_MODULE_PATH := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)
 include $(BUILD_PREBUILT)
+
+endif # !TARGET_SIMULATOR

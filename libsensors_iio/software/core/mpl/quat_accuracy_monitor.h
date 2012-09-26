@@ -62,7 +62,6 @@ inv_error_t inv_stop_quat_accuracy_monitor(void);
 double get_compassNgravity(void);
 double get_init_compassNgravity(void);
 
-float inv_heading_accuracy_check(float orient[3], float *heading, int8_t *accuracy);
 
 #ifdef __cplusplus
 }

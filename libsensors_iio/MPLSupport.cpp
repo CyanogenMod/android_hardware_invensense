@@ -1,27 +1,9 @@
-/*
-* Copyright (C) 2012 Invensense, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*      http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
-
 #include <MPLSupport.h>
 #include <string.h>
 #include <stdio.h>
 #include "log.h"
 #include "SensorBase.h"
 #include <fcntl.h>
-
-#include "ml_sysfs_helper.h"
 
 int inv_read_data(char *fname, long *data)
 {
@@ -83,13 +65,20 @@ int enable_sysfs_sensor(int fd, int en)
     int err = 0;
 
     if (fd >= 0) {
-        char c = en ? '1' : '0';
-        nb = write(fd, &c, 1);
+        char buf[2];
+        if (en) {
+            buf[0] = '1';
+            nb = write(fd, buf, 1);
+        } else {
+            buf[0] = '0';
+            nb = write(fd, buf, 1);
+        }
+        buf[1] = '\0';
 
         if (nb <= 0) {
             err = errno;
             LOGE("HAL:enable_sysfs_sensor - write %c returned %d (%s / %d)",
-                 c, nb, strerror(err), err);
+                 buf[0], nb, strerror(err), err);
         }
         close(fd);
     } else {
@@ -122,28 +111,6 @@ int write_attribute_sensor(int fd, long data)
     return num_b;
 }
 
-/* This one DOES NOT close FDs for you */
-int write_attribute_sensor_continuous(int fd, long data)
-{
-    VFUNC_LOG;
-
-    int num_b = 0;
-
-    if (fd >= 0) {
-        char buf[80];
-        sprintf(buf, "%ld", data);
-        num_b = write(fd, buf, strlen(buf) + 1);
-        if (num_b <= 0) {
-            int err = errno;
-            LOGE("HAL:write fd %d returned '%s' (%d)", fd, strerror(err), err);
-        } else {
-            LOGV_IF(EXTRA_VERBOSE, "HAL:fd=%d write attribute to %ld", fd, data);
-        }
-    }
-
-    return num_b;
-}
-
 int read_sysfs_int(char *filename, int *var)
 {
     int res=0;
@@ -152,10 +119,10 @@ int read_sysfs_int(char *filename, int *var)
     sysfsfp = fopen(filename, "r");
     if (sysfsfp!=NULL) {
         fscanf(sysfsfp, "%d\n", var);
-        fclose(sysfsfp);
+	fclose(sysfsfp);
     } else {
-        res = errno;
-        LOGE("HAL:ERR open file %s to read with error %d", filename, res);
+        LOGE("HAL:ERR open file to read");
+        res= -1;   
     }
     return res;
 }
@@ -168,54 +135,10 @@ int write_sysfs_int(char *filename, int var)
     sysfsfp = fopen(filename, "w");
     if (sysfsfp!=NULL) {
         fprintf(sysfsfp, "%d\n", var);
-        fclose(sysfsfp);
+	fclose(sysfsfp);
     } else {
-        res = errno;
-        LOGE("HAL:ERR open file %s to read with error %d", filename, res);
+        LOGE("HAL:ERR open file to write");
+        res= -1;   
     }
     return res;
 }
-
-int fill_dev_full_name_by_prefix(const char* dev_prefix,
-                                 char *dev_full_name, int len)
-{
-    char cand_name[20];
-    int prefix_len = strlen(dev_prefix);
-    strncpy(cand_name, dev_prefix, sizeof(cand_name) / sizeof(cand_name[0]));
-
-    // try adding a number, 0-9
-    for(int cand_postfix = 0; cand_postfix < 10; cand_postfix++) {
-        snprintf(&cand_name[prefix_len],
-                 sizeof(cand_name) / sizeof(cand_name[0]),
-                 "%d", cand_postfix);
-        int dev_num = find_type_by_name(cand_name, "iio:device");
-        if (dev_num != -ENODEV) {
-            strncpy(dev_full_name, cand_name, len);
-            return 0;
-        }
-    }
-    // try adding a small letter, a-z
-    for(char cand_postfix = 'a'; cand_postfix <= 'z'; cand_postfix++) {
-        snprintf(&cand_name[prefix_len],
-                 sizeof(cand_name) / sizeof(cand_name[0]),
-                 "%c", cand_postfix);
-        int dev_num = find_type_by_name(cand_name, "iio:device");
-        if (dev_num != -ENODEV) {
-            strncpy(dev_full_name, cand_name, len);
-            return 0;
-        }
-    }
-    // try adding a capital letter, A-Z
-    for(char cand_postfix = 'A'; cand_postfix <= 'Z'; cand_postfix++) {
-        snprintf(&cand_name[prefix_len],
-                 sizeof(cand_name) / sizeof(cand_name[0]),
-                 "%c", cand_postfix);
-        int dev_num = find_type_by_name(cand_name, "iio:device");
-        if (dev_num != -ENODEV) {
-            strncpy(dev_full_name, cand_name, len);
-            return 0;
-        }
-    }
-    return 1;
-}
-

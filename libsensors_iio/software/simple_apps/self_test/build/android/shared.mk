@@ -18,7 +18,6 @@ HAL_DIR    = $(INV_ROOT)/software/core/HAL
 include $(INV_ROOT)/software/build/android/common.mk
 
 CFLAGS += $(CMDLINE_CFLAGS)
-CFLAGS += $(ANDROID_COMPILE)
 CFLAGS += -Wall
 CFLAGS += -fpic
 CFLAGS += -nostdlib
@@ -50,8 +49,20 @@ LLINK += -lstdc++
 LLINK += -llog
 LLINK += -lz
 
+PRE_LFLAGS := -Wl,-T,$(ANDROID_ROOT)/build/core/armelf.x
+PRE_LFLAGS += $(ANDROID_ROOT)/out/target/product/$(PRODUCT)/obj/lib/crtend_android.o
+PRE_LFLAGS += $(ANDROID_ROOT)/out/target/product/$(PRODUCT)/obj/lib/crtbegin_dynamic.o
+
 LFLAGS += $(CMDLINE_LFLAGS)
-LFLAGS += $(ANDROID_LINK_EXECUTABLE)
+LFLAGS += -nostdlib
+LFLAGS += -fpic
+LFLAGS += -Wl,--gc-sections 
+LFLAGS += -Wl,--no-whole-archive 
+LFLAGS += -Wl,-dynamic-linker,/system/bin/linker
+LFLAGS += $(ANDROID_LINK)
+ifneq ($(PRODUCT),panda)
+LFLAGS += -rdynamic
+endif
 
 LRPATH  = -Wl,-rpath,$(ANDROID_ROOT)/out/target/product/$(PRODUCT)/obj/lib:$(ANDROID_ROOT)/out/target/product/$(PRODUCT)/system/lib
 
@@ -76,7 +87,7 @@ all: $(EXEC) $(MK_NAME)
 
 $(EXEC) : $(OBJFOLDER) $(INV_OBJS_DST) $(INV_LIBS) $(MK_NAME)
 	@$(call echo_in_colors, "\n<linking $(EXEC) with objects $(INV_OBJS_DST) $(PREBUILT_OBJS) and libraries $(INV_LIBS)\n")
-	$(LINK) $(INV_OBJS_DST) -o $(EXEC) $(LFLAGS) $(LLINK) $(INV_LIBS) $(LLINK) $(LRPATH)
+	$(LINK) $(PRE_LFLAGS) $(INV_OBJS_DST) -o $(EXEC) $(LFLAGS) $(LLINK) $(INV_LIBS) $(LLINK) $(LRPATH)
 
 $(OBJFOLDER) :
 	@$(call echo_in_colors, "\n<creating object's folder 'obj/'>\n")

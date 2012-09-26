@@ -4,9 +4,6 @@ SHELL = /bin/bash
 ####################################################################################################
 ## defines
 
-# Build for Jellybean 
-BUILD_ANDROID_JELLYBEAN = 1
-
 ## libraries ##
 LIB_PREFIX = lib
 
@@ -19,39 +16,23 @@ TARGET ?= android
 
 MLLITE_LIB_NAME     ?= mllite
 MPL_LIB_NAME        ?= mplmpu
+HALWRAPPER_LIB_NAME ?= androidhal
 
 ## applications ##
 SHARED_APP_SUFFIX = -shared
 STATIC_APP_SUFFIX = -static
 
 ####################################################################################################
-## compile, includes, and linker
+## includes and linker
 
-ifeq ($(BUILD_ANDROID_JELLYBEAN),1)
-ANDROID_COMPILE = -DANDROID_JELLYBEAN=1
-endif
-
-ANDROID_LINK  = -nostdlib
-ANDROID_LINK += -fpic
-ANDROID_LINK += -Wl,--gc-sections 
-ANDROID_LINK += -Wl,--no-whole-archive 
+ANDROID_LINK  = -L$(ANDROID_ROOT)/out/target/product/$(PRODUCT)/system/lib
 ANDROID_LINK += -L$(ANDROID_ROOT)/out/target/product/$(PRODUCT)/obj/lib 
-ANDROID_LINK += -L$(ANDROID_ROOT)/out/target/product/$(PRODUCT)/system/lib
-
-ANDROID_LINK_EXECUTABLE  = $(ANDROID_LINK)
-ANDROID_LINK_EXECUTABLE += -Wl,-dynamic-linker,/system/bin/linker
-ifneq ($(BUILD_ANDROID_JELLYBEAN),1)
-ANDROID_LINK_EXECUTABLE += -Wl,-T,$(ANDROID_ROOT)/build/core/armelf.x
-endif
-ANDROID_LINK_EXECUTABLE += $(ANDROID_ROOT)/out/target/product/$(PRODUCT)/obj/lib/crtbegin_dynamic.o
-ANDROID_LINK_EXECUTABLE += $(ANDROID_ROOT)/out/target/product/$(PRODUCT)/obj/lib/crtend_android.o
 
 ANDROID_INCLUDES  = -I$(ANDROID_ROOT)/system/core/include
 ANDROID_INCLUDES += -I$(ANDROID_ROOT)/hardware/libhardware/include
 ANDROID_INCLUDES += -I$(ANDROID_ROOT)/hardware/ril/include
 ANDROID_INCLUDES += -I$(ANDROID_ROOT)/dalvik/libnativehelper/include
-ANDROID_INCLUDES += -I$(ANDROID_ROOT)/frameworks/base/include   # ICS
-ANDROID_INCLUDES += -I$(ANDROID_ROOT)/frameworks/native/include # Jellybean
+ANDROID_INCLUDES += -I$(ANDROID_ROOT)/frameworks/base/include
 ANDROID_INCLUDES += -I$(ANDROID_ROOT)/external/skia/include
 ANDROID_INCLUDES += -I$(ANDROID_ROOT)/out/target/product/generic/obj/include
 ANDROID_INCLUDES += -I$(ANDROID_ROOT)/bionic/libc/arch-arm/include

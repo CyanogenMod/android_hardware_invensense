@@ -22,8 +22,6 @@
 #include <sys/cdefs.h>
 #include <sys/types.h>
 
-#include "SensorBase.h"
-
 /*****************************************************************************/
 
 struct input_event;

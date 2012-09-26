@@ -10,7 +10,6 @@
 #ifndef __KERNEL__
 #include <stdio.h>
 #endif
-#include <pthread.h>
 
 #include "mltypes.h"
 
@@ -19,7 +18,7 @@ extern "C" {
 #endif
 
 #if defined(LINUX) || defined(__KERNEL__)
-typedef pthread_mutex_t* HANDLE;
+typedef unsigned int HANDLE;
 #endif
 
 	/* ------------ */

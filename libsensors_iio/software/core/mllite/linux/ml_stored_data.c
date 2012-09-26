@@ -21,12 +21,13 @@
 
 #include <stdio.h>
 
-#include "log.h"
 #undef MPL_LOG_TAG
 #define MPL_LOG_TAG "MPL-storeload"
 
+
 #include "ml_stored_data.h"
 #include "storage_manager.h"
+#include "log.h"
 #include "mlos.h"
 
 #define LOADCAL_DEBUG    0
@@ -37,40 +38,26 @@
 #define STORECAL_LOG MPL_LOGI
 #define LOADCAL_LOG  MPL_LOGI
 
-inv_error_t inv_read_cal(unsigned char **calData, size_t *bytesRead)
+inv_error_t inv_read_cal(unsigned char *cal, size_t len)
 {
     FILE *fp;
+    int bytesRead;
     inv_error_t result = INV_SUCCESS;
-    size_t fsize;
 
     fp = fopen(MLCAL_FILE,"rb");
     if (fp == NULL) {
         MPL_LOGE("Cannot open file \"%s\" for read\n", MLCAL_FILE);
         return INV_ERROR_FILE_OPEN;
     }
-
-    // obtain file size
-    fseek (fp, 0 , SEEK_END);
-    fsize = ftell (fp);
-    rewind (fp);
-  
-    *calData = (unsigned char *)inv_malloc(fsize);
-    if (*calData==NULL) {
-        MPL_LOGE("Could not allocate buffer of %d bytes - "
-                 "aborting\n", fsize);
-        fclose(fp);
-        return INV_ERROR_MEMORY_EXAUSTED;
-    }
-
-    *bytesRead = fread(*calData, 1, fsize, fp);
-    if (*bytesRead != fsize) {
-        MPL_LOGE("bytes read (%d) don't match file size (%d)\n",
-                 *bytesRead, fsize);
+    bytesRead = fread(cal, 1, len, fp);
+    if (bytesRead != len) {
+        MPL_LOGE("bytes read (%d) don't match requested length (%d)\n",
+                 bytesRead, len);
         result = INV_ERROR_FILE_READ;
         goto read_cal_end;
     }
     else {
-        MPL_LOGI("Bytes read = %d", *bytesRead);
+        MPL_LOGI("Bytes read = %d", bytesRead);
     }
 
 read_cal_end:
@@ -274,18 +261,31 @@ inv_error_t inv_store_cal(unsigned char *calData, size_t length)
  */
 inv_error_t inv_load_calibration(void)
 {
-    unsigned char *calData= NULL;
+    unsigned char *calData;
     inv_error_t result = 0;
-    size_t bytesRead = 0;
+    size_t length;
 
-    result = inv_read_cal(&calData, &bytesRead);
+    inv_get_mpl_state_size(&length);
+    if (length <= 0) {
+        MPL_LOGE("Could not get file calibration length - "
+                 "error %d - aborting\n", result);
+        return result;
+    }
+
+    calData = (unsigned char *)inv_malloc(length);
+    if (!calData) {
+        MPL_LOGE("Could not allocate buffer of %d bytes - "
+                 "aborting\n", length);
+        return INV_ERROR_MEMORY_EXAUSTED;
+    }
+
+    result = inv_read_cal(calData, length);
     if(result != INV_SUCCESS) {
         MPL_LOGE("Could not load cal file - "
                  "aborting\n");
-        goto free_mem_n_exit;
     }
 
-    result = inv_load_mpl_states(calData, bytesRead);
+    result = inv_load_mpl_states(calData, length);
     if (result != INV_SUCCESS) {
         MPL_LOGE("Could not load the calibration data - "
                  "error %d - aborting\n", result);
@@ -294,7 +294,7 @@ inv_error_t inv_load_calibration(void)
 
 free_mem_n_exit:
     inv_free(calData);
-    return result;
+    return INV_SUCCESS;
 }
 
 /**
@@ -345,7 +345,7 @@ inv_error_t inv_store_calibration(void)
 
 free_mem_n_exit:
     inv_free(calData);
-    return result;
+    return INV_SUCCESS;
 }
 
 /**

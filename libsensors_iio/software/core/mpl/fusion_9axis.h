@@ -26,8 +26,6 @@ extern "C" {
     inv_error_t inv_disable_9x_sensor_fusion(void);
     inv_error_t inv_start_9x_sensor_fusion(void);
     inv_error_t inv_stop_9x_sensor_fusion(void);
-    inv_error_t inv_9x_fusion_set_mag_fb(double fb);
-    inv_error_t inv_9x_fusion_enable_jitter_reduction(int en);
 
 #ifdef __cplusplus
 }

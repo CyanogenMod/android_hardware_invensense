@@ -4,19 +4,16 @@
     See included License.txt for License information.
  $
  */
-
+ 
 /**
  *   @defgroup  HAL_Outputs hal_outputs
  *   @brief     Motion Library - HAL Outputs
  *              Sets up common outputs for HAL
  *
  *   @{
- *       @file  hal_outputs.c
+ *       @file hal_outputs.c
  *       @brief HAL Outputs.
  */
-
-#include <string.h>
-
 #include "hal_outputs.h"
 #include "log.h"
 #include "ml_math_func.h"
@@ -26,22 +23,17 @@
 #include "results_holder.h"
 
 struct hal_output_t {
-    int accuracy_mag;    /**< Compass accuracy */
-//    int accuracy_gyro;   /**< Gyro Accuracy */
-//    int accuracy_accel;  /**< Accel Accuracy */
-    int accuracy_quat;   /**< quat Accuracy */
-
+    int accuracy_mag; /**< Compass accuracy */
+    int accuracy_gyro; /**< Gyro Accuracy */
+    int accuracy_accel;	/**< Accel Accuracy */
     inv_time_t nav_timestamp;
     inv_time_t gam_timestamp;
-//    inv_time_t accel_timestamp;
-    inv_time_t mag_timestamp;
+    inv_time_t accel_timestamp;
     long nav_quat[4];
     int gyro_status;
     int accel_status;
     int compass_status;
     int nine_axis_status;
-    inv_biquad_filter_t lp_filter[3];
-    float compass_float[3];
 };
 
 static struct hal_output_t hal_out;
@@ -111,7 +103,7 @@ int inv_get_sensor_type_gravity(float *values, int8_t *accuracy,
     long gravity[3];
     int status;
 
-    *accuracy = (int8_t) hal_out.accuracy_quat;
+    *accuracy = hal_out.accuracy_mag;
     *timestamp = hal_out.nav_timestamp;
     inv_get_gravity(gravity);
     values[0] = (gravity[0] >> 14) * ACCEL_CONVERSION;
@@ -124,11 +116,7 @@ int inv_get_sensor_type_gravity(float *values, int8_t *accuracy,
     return status;
 }
 
-/* Converts fixed point to rad/sec. Fixed point has 1 dps = 2^16.
- * So this is: pi / 2^16 / 180 */
-#define GYRO_CONVERSION 2.66316109007924e-007f
-
-/** Gyroscope calibrated data (rad/s) in body frame.
+/** Gyroscope data (rad/s) in body frame.
 * @param[out] values Rotation Rate in rad/sec.
 * @param[out] accuracy Accuracy of the measurment, 0 is least accurate, while 3 is most accurate.
 * @param[out] timestamp The timestamp for this sensor. Derived from the timestamp sent to
@@ -138,34 +126,13 @@ int inv_get_sensor_type_gravity(float *values, int8_t *accuracy,
 int inv_get_sensor_type_gyroscope(float *values, int8_t *accuracy,
                                    inv_time_t * timestamp)
 {
+    /* Converts fixed point to rad/sec. Fixed point has 1 dps = 2^16.
+     * So this is: pi / 2^16 / 180 */
+#define GYRO_CONVERSION 2.66316109007924e-007f
     long gyro[3];
     int status;
 
     inv_get_gyro_set(gyro, accuracy, timestamp);
-    values[0] = gyro[0] * GYRO_CONVERSION;
-    values[1] = gyro[1] * GYRO_CONVERSION;
-    values[2] = gyro[2] * GYRO_CONVERSION;
-    if (hal_out.gyro_status & INV_NEW_DATA)
-        status = 1;
-    else
-        status = 0;
-    return status;
-}
-
-/** Gyroscope raw data (rad/s) in body frame.
-* @param[out] values Rotation Rate in rad/sec.
-* @param[out] accuracy Accuracy of the measurment, 0 is least accurate, while 3 is most accurate.
-* @param[out] timestamp The timestamp for this sensor. Derived from the timestamp sent to
-*             inv_build_gyro().
-* @return     Returns 1 if the data was updated or 0 if it was not updated.
-*/
-int inv_get_sensor_type_gyroscope_raw(float *values, int8_t *accuracy,
-                                   inv_time_t * timestamp)
-{
-    long gyro[3];
-    int status;
-
-    inv_get_gyro_set_raw(gyro, accuracy, timestamp);
     values[0] = gyro[0] * GYRO_CONVERSION;
     values[1] = gyro[1] * GYRO_CONVERSION;
     values[2] = gyro[2] * GYRO_CONVERSION;
@@ -203,7 +170,7 @@ int inv_get_sensor_type_gyroscope_raw(float *values, int8_t *accuracy,
 int inv_get_sensor_type_rotation_vector(float *values, int8_t *accuracy,
         inv_time_t * timestamp)
 {
-    *accuracy = (int8_t) hal_out.accuracy_quat;
+    *accuracy = hal_out.accuracy_mag;
     *timestamp = hal_out.nav_timestamp;
 
     if (hal_out.nav_quat[0] >= 0) {
@@ -236,52 +203,17 @@ int inv_get_sensor_type_magnetic_field(float *values, int8_t *accuracy,
     int status;
     /* Converts fixed point to uT. Fixed point has 1 uT = 2^16.
      * So this is: 1 / 2^16*/
-//#define COMPASS_CONVERSION 1.52587890625e-005f
-    int i;
-
-    *timestamp = hal_out.mag_timestamp;
-    *accuracy = (int8_t) hal_out.accuracy_mag;
-
-    for (i=0; i<3; i++)  {
-        values[i] = hal_out.compass_float[i];
-    }
+#define COMPASS_CONVERSION 1.52587890625e-005f
+    long compass[3];
+    inv_get_compass_set(compass, accuracy, timestamp);
+    values[0] = compass[0] * COMPASS_CONVERSION;
+    values[1] = compass[1] * COMPASS_CONVERSION;
+    values[2] = compass[2] * COMPASS_CONVERSION;
     if (hal_out.compass_status & INV_NEW_DATA)
         status = 1;
     else
         status = 0;
-    hal_out.compass_status = 0;
     return status;
-}
-
-static void inv_get_rotation(float r[3][3])
-{
-    long rot[9];
-    float conv = 1.f / (1L<<30);
-
-    inv_quaternion_to_rotation(hal_out.nav_quat, rot);
-    r[0][0] = rot[0]*conv;
-    r[0][1] = rot[1]*conv;
-    r[0][2] = rot[2]*conv;
-    r[1][0] = rot[3]*conv;
-    r[1][1] = rot[4]*conv;
-    r[1][2] = rot[5]*conv;
-    r[2][0] = rot[6]*conv;
-    r[2][1] = rot[7]*conv;
-    r[2][2] = rot[8]*conv;
-}
-
-static void google_orientation(float *g)
-{
-    float rad2deg = (float)(180.0 / M_PI);
-    float R[3][3];
-
-    inv_get_rotation(R);
-
-    g[0] = atan2f(-R[1][0], R[0][0]) * rad2deg;
-    g[1] = atan2f(-R[2][1], R[2][2]) * rad2deg;
-    g[2] = asinf ( R[2][0])          * rad2deg;
-    if (g[0] < 0)
-        g[0] += 360;
 }
 
 
@@ -309,29 +241,78 @@ static void google_orientation(float *g)
 int inv_get_sensor_type_orientation(float *values, int8_t *accuracy,
                                      inv_time_t * timestamp)
 {
-    *accuracy = (int8_t) hal_out.accuracy_quat;
+    long t1, t2, t3;
+    long q00, q01, q02, q03, q11, q12, q13, q22, q23, q33;
+
+    *accuracy = hal_out.accuracy_mag;
     *timestamp = hal_out.nav_timestamp;
 
-    google_orientation(values);
+    q00 = inv_q29_mult(hal_out.nav_quat[0], hal_out.nav_quat[0]);
+    q01 = inv_q29_mult(hal_out.nav_quat[0], hal_out.nav_quat[1]);
+    q02 = inv_q29_mult(hal_out.nav_quat[0], hal_out.nav_quat[2]);
+    q03 = inv_q29_mult(hal_out.nav_quat[0], hal_out.nav_quat[3]);
+    q11 = inv_q29_mult(hal_out.nav_quat[1], hal_out.nav_quat[1]);
+    q12 = inv_q29_mult(hal_out.nav_quat[1], hal_out.nav_quat[2]);
+    q13 = inv_q29_mult(hal_out.nav_quat[1], hal_out.nav_quat[3]);
+    q22 = inv_q29_mult(hal_out.nav_quat[2], hal_out.nav_quat[2]);
+    q23 = inv_q29_mult(hal_out.nav_quat[2], hal_out.nav_quat[3]);
+    q33 = inv_q29_mult(hal_out.nav_quat[3], hal_out.nav_quat[3]);
+
+    /* X component of the Ybody axis in World frame */
+    t1 = q12 - q03;
+
+    /* Y component of the Ybody axis in World frame */
+    t2 = q22 + q00 - (1L << 30);
+    values[0] = atan2f((float) t1, (float) t2) * 180.f / (float) M_PI;
+    if (values[0] < 0)
+        values[0] += 360;
+
+    /* Z component of the Ybody axis in World frame */
+    t3 = q23 + q01;
+    values[1] =
+        -atan2f((float) t3,
+                sqrtf((float) t1 * t1 +
+                      (float) t2 * t2)) * 180.f / (float) M_PI;
+    /* Z component of the Zbody axis in World frame */
+    t2 = q33 + q00 - (1L << 30);
+    if (t2 < 0) {
+        if (values[1] >= 0)
+            values[1] = 180.f - values[1];
+        else
+            values[1] = -180.f - values[1];
+    }
+
+    /* X component of the Xbody axis in World frame */
+    t1 = q11 + q00 - (1L << 30);
+    /* Y component of the Xbody axis in World frame */
+    t2 = q12 + q03;
+    /* Z component of the Xbody axis in World frame */
+    t3 = q13 - q02;
+    //values[2] = atan2f((float)t3,sqrtf((float)t1*t1+(float)t2*t2))*180.f/(float)M_PI;
+
+    values[2] =
+        -(atan2f((float)(q33 + q00 - (1L << 30)), (float)(q13 - q02)) *
+          180.f / (float) M_PI - 90);
+    if (values[2] >= 90)
+        values[2] = 180 - values[2];
+
+    if (values[2] < -90)
+        values[2] = -180 - values[2];
 
     return hal_out.nine_axis_status;
 }
 
 /** Main callback to generate HAL outputs. Typically not called by library users.
-* @param[in] sensor_cal Input variable to take sensor data whenever there is new
+* @param[in] sensor_cal Input variable to take sensor data whenever there is new 
 * sensor data.
 * @return Returns INV_SUCCESS if successful or an error code if not.
 */
 inv_error_t inv_generate_hal_outputs(struct inv_sensor_cal_t *sensor_cal)
 {
     int use_sensor = 0;
-    long sr = 1000;
-    long compass[3];
-    int8_t accuracy;
-    int i;
+    long sr;
     (void) sensor_cal;
-
-    inv_get_quaternion_set(hal_out.nav_quat, &hal_out.accuracy_quat,
+    inv_get_quaternion_set(hal_out.nav_quat, &hal_out.accuracy_mag,
                            &hal_out.nav_timestamp);
     hal_out.gyro_status = sensor_cal->gyro.status;
     hal_out.accel_status = sensor_cal->accel.status;
@@ -355,65 +336,26 @@ inv_error_t inv_generate_hal_outputs(struct inv_sensor_cal_t *sensor_cal)
         use_sensor = 3;
     }
 
-    // Only output 9-axis if all 9 sensors are on.
-    if (sensor_cal->quat.status & INV_SENSOR_ON) {
-        // If quaternion sensor is on, gyros are not required as quaternion already has that part
-        if ((sensor_cal->accel.status & sensor_cal->compass.status & INV_SENSOR_ON) == 0) {
-            use_sensor = -1;
-        }
-    } else {
-        if ((sensor_cal->gyro.status & sensor_cal->accel.status & sensor_cal->compass.status & INV_SENSOR_ON) == 0) {
-            use_sensor = -1;
-        }
-    }
-
     switch (use_sensor) {
+    default:
     case 0:
         hal_out.nine_axis_status = (sensor_cal->gyro.status & INV_NEW_DATA) ? 1 : 0;
-        hal_out.nav_timestamp = sensor_cal->gyro.timestamp;
+        hal_out.nav_timestamp = sensor_cal->gyro.timestamp; 
         break;
     case 1:
         hal_out.nine_axis_status = (sensor_cal->accel.status & INV_NEW_DATA) ? 1 : 0;
-        hal_out.nav_timestamp = sensor_cal->accel.timestamp;
+        hal_out.nav_timestamp = sensor_cal->accel.timestamp; 
         break;
     case 2:
         hal_out.nine_axis_status = (sensor_cal->compass.status & INV_NEW_DATA) ? 1 : 0;
-        hal_out.nav_timestamp = sensor_cal->compass.timestamp;
+        hal_out.nav_timestamp = sensor_cal->compass.timestamp; 
         break;
     case 3:
         hal_out.nine_axis_status = (sensor_cal->quat.status & INV_NEW_DATA) ? 1 : 0;
-        hal_out.nav_timestamp = sensor_cal->quat.timestamp;
-        break;
-    default:
-        hal_out.nine_axis_status = 0; // Don't output quaternion related info
+        hal_out.nav_timestamp = sensor_cal->quat.timestamp; 
         break;
     }
 
-    /* Converts fixed point to uT. Fixed point has 1 uT = 2^16.
-     * So this is: 1 / 2^16*/
-    #define COMPASS_CONVERSION 1.52587890625e-005f
-
-    inv_get_compass_set(compass, &accuracy, &(hal_out.mag_timestamp) );
-    hal_out.accuracy_mag = (int ) accuracy;
-
-    for (i=0; i<3; i++) {
-        if ((sensor_cal->compass.status & (INV_NEW_DATA | INV_CONTIGUOUS)) ==
-                                                             INV_NEW_DATA )  {
-            // set the state variables to match output with input
-            inv_calc_state_to_match_output(&hal_out.lp_filter[i], (float ) compass[i]);
-        }
-
-        if ((sensor_cal->compass.status & (INV_NEW_DATA | INV_RAW_DATA)) ==
-                                         (INV_NEW_DATA | INV_RAW_DATA)   )  {
-
-            hal_out.compass_float[i] = inv_biquad_filter_process(&hal_out.lp_filter[i],
-                                           (float ) compass[i]) * COMPASS_CONVERSION;
-
-        } else if ((sensor_cal->compass.status & INV_NEW_DATA) == INV_NEW_DATA )  {
-            hal_out.compass_float[i] = (float ) compass[i] * COMPASS_CONVERSION;
-        }
-
-    }
     return INV_SUCCESS;
 }
 
@@ -440,9 +382,6 @@ inv_error_t inv_start_hal_outputs(void)
                              INV_GYRO_NEW | INV_ACCEL_NEW | INV_MAG_NEW);
     return result;
 }
-/* file name: lowPassFilterCoeff_1_6.c */
-float compass_low_pass_filter_coeff[5] =
-{+2.000000000000f, +1.000000000000f, -1.279632424998f, +0.477592250073f, +0.049489956269f};
 
 /** Initializes hal outputs class. This is called automatically by the
 * enable function. It may be called any time the feature is enabled, but
@@ -451,12 +390,7 @@ float compass_low_pass_filter_coeff[5] =
 */
 inv_error_t inv_init_hal_outputs(void)
 {
-    int i;
     memset(&hal_out, 0, sizeof(hal_out));
-    for (i=0; i<3; i++)  {
-        inv_init_biquad_filter(&hal_out.lp_filter[i], compass_low_pass_filter_coeff);
-    }
-
     return INV_SUCCESS;
 }
 
@@ -466,8 +400,8 @@ inv_error_t inv_init_hal_outputs(void)
 inv_error_t inv_enable_hal_outputs(void)
 {
     inv_error_t result;
-
-	// don't need to check the result for inv_init_hal_outputs
+    
+	// don't need to check the result for inv_init_hal_outputs 
 	// since it's always INV_SUCCESS
 	inv_init_hal_outputs();
 
@@ -481,7 +415,7 @@ inv_error_t inv_disable_hal_outputs(void)
 {
     inv_error_t result;
 
-    inv_stop_hal_outputs(); // Ignore error if we have already stopped this
+    inv_stop_hal_outputs(); // Ignore error if we have already stopped this    
     result = inv_unregister_mpl_start_notification(inv_start_hal_outputs);
     return result;
 }

@@ -16,7 +16,6 @@ MPL_DIR  = $(INV_ROOT)/software/core/mpl
 include $(INV_ROOT)/software/build/android/common.mk
 
 CFLAGS += $(CMDLINE_CFLAGS)
-CFLAGS += $(ANDROID_COMPILE)
 CFLAGS += -Wall
 CFLAGS += -fpic
 CFLAGS += -nostdlib
@@ -44,6 +43,11 @@ LLINK += -ldl
 LFLAGS += $(CMDLINE_LFLAGS)
 LFLAGS += -shared 
 LFLAGS += -Wl,-soname,$(LIBRARY)
+LFLAGS += -nostdlib 
+LFLAGS += -fpic 
+LFLAGS += -Wl,-T,$(ANDROID_ROOT)/build/core/armelf.xsc 
+LFLAGS += -Wl,--gc-sections 
+LFLAGS += -Wl,--no-whole-archive 
 LFLAGS += -Wl,-shared,-Bsymbolic 
 LFLAGS += $(ANDROID_LINK)
 LFLAGS += -Wl,-rpath,$(ANDROID_ROOT)/out/target/product/$(PRODUCT)/obj/lib:$(ANDROID_ROOT)/out/target/product/$(PRODUCT)/system/lib

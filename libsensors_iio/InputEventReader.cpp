@@ -29,6 +29,7 @@
 #include <cutils/log.h>
 
 #include "InputEventReader.h"
+#include "local_log_def.h"
 
 /*****************************************************************************/
 
@@ -52,20 +53,20 @@ InputEventCircularReader::~InputEventCircularReader()
 ssize_t InputEventCircularReader::fill(int fd)
 {
     size_t numEventsRead = 0;
-    LOGV_IF(INPUT_EVENT_DEBUG,
+    LOGV_IF(INPUT_EVENT_DEBUG, 
             "DEBUG:%s enter, fd=%d\n", __PRETTY_FUNCTION__, fd);
     if (mFreeSpace) {
         const ssize_t nread = read(fd, mHead, mFreeSpace * sizeof(input_event));
         if (nread < 0 || nread % sizeof(input_event)) {
-            //LOGE("Partial event received nread=%d, required=%d",
+            //LOGE("Partial event received nread=%d, required=%d", 
             //     nread, sizeof(input_event));
             //LOGE("FD trying to read is: %d");
             // we got a partial event!!
             if (INPUT_EVENT_DEBUG) {
-                LOGV_IF(nread < 0, "DEBUG:%s exit nread < 0\n",
+                LOGV_IF(nread < 0, "DEBUG:%s exit nread < 0\n", 
                         __PRETTY_FUNCTION__);
-                LOGV_IF(nread % sizeof(input_event),
-                        "DEBUG:%s exit nread %% sizeof(input_event)\n",
+                LOGV_IF(nread % sizeof(input_event), 
+                        "DEBUG:%s exit nread %% sizeof(input_event)\n", 
                         __PRETTY_FUNCTION__);
             }
             return (nread < 0 ? -errno : -EINVAL);

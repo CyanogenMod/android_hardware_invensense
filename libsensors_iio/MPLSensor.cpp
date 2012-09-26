@@ -34,7 +34,6 @@
 #include <utils/String8.h>
 #include <string.h>
 #include <linux/input.h>
-#include <utils/Atomic.h>
 
 #include "MPLSensor.h"
 #include "MPLSupport.h"
@@ -47,6 +46,7 @@
 #include "ml_sysfs_helper.h"
 
 // #define TESTING
+// #define ENABLE_LP_QUAT_FEAT /* Uncomment to enable Low Power Quaternion */
 
 #ifdef THIRD_PARTY_ACCEL
 #   warning "Third party accel"
@@ -80,17 +80,10 @@ static int hertz_request = 200;
 #define HW_ACCEL_RATE_HZ                (1000 / hertz_request)
 #define HW_COMPASS_RATE_HZ              (1000000000LL / hertz_request)
 
-#define RATE_200HZ                      5000000LL
-#define RATE_15HZ                       66667000LL
-#define RATE_5HZ                        200000000LL
-
 static struct sensor_t sSensorList[] =
 {
     {"MPL Gyroscope", "Invensense", 1,
      SENSORS_GYROSCOPE_HANDLE,
-     SENSOR_TYPE_GYROSCOPE, 2000.0f, 1.0f, 0.5f, 10000, {}},
-    {"MPL Raw Gyroscope", "Invensense", 1,
-     SENSORS_RAW_GYROSCOPE_HANDLE,
      SENSOR_TYPE_GYROSCOPE, 2000.0f, 1.0f, 0.5f, 10000, {}},
     {"MPL Accelerometer", "Invensense", 1,
      SENSORS_ACCELERATION_HANDLE,
@@ -110,12 +103,6 @@ static struct sensor_t sSensorList[] =
     {"MPL Gravity", "Invensense", 1,
      SENSORS_GRAVITY_HANDLE,
      SENSOR_TYPE_GRAVITY, 10240.0f, 1.0f, 0.5f, 10000, {}},
-
-#ifdef ENABLE_DMP_SCREEN_AUTO_ROTATION
-    {"MPL Screen Orientation", "Invensense ", 1,
-     SENSORS_SCREEN_ORIENTATION_HANDLE,
-     SENSOR_TYPE_SCREEN_ORIENTATION, 100.0f, 1.0f, 1.1f, 0, {}},
-#endif
 };
 
 MPLSensor *MPLSensor::gMPLSensor = NULL;
@@ -147,20 +134,17 @@ static FILE *logfile = NULL;
  * MPLSensor class implementation
  ******************************************************************************/
 
-// following extended initializer list would only be available with -std=c++11 or -std=gnu+11
-MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *))
+MPLSensor::MPLSensor(CompassSensor *compass)
                        : SensorBase(NULL, NULL),
+                         mMplSensorInitialized(false),
                          mNewData(0),
                          mMasterSensorMask(INV_ALL_SENSORS),
-                         mLocalSensorMask(0),
+                         mLocalSensorMask(ALL_MPL_SENSORS_NP),
                          mPollTime(-1),
                          mHaveGoodMpuCal(0),
                          mGyroAccuracy(0),
                          mAccelAccuracy(0),
-                         mCompassAccuracy(0),
                          mSampleCount(0),
-                         dmp_orient_fd(-1),
-                         mDmpOrientationEnabled(0),
                          mEnabled(0),
                          mOldEnabledMask(0),
                          mAccelInputReader(4),
@@ -171,6 +155,8 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
                          mAccelScale(2),
                          mPendingMask(0),
                          mSensorMask(0),
+                         mGyroOrientation{0},
+                         mAccelOrientation{0},
                          mFeatureActiveMask(0) {
     VFUNC_LOG;
 
@@ -185,7 +171,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     mCompassSensor = compass;
 
     LOGV_IF(EXTRA_VERBOSE,
-            "HAL:MPLSensor constructor : NUMSENSORS = %d", NUMSENSORS);
+            "HAL:MPLSensor constructor : numSensors = %d", numSensors);
 
     pthread_mutex_init(&mMplMutex, NULL);
     pthread_mutex_init(&mHALMutex, NULL);
@@ -198,7 +184,10 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
 #endif
 
     /* setup sysfs paths */
-    inv_init_sysfs_attributes();
+    if(inv_init_sysfs_attributes()) {
+        ALOGE("MPLSensor failed to init sysfs attributes");
+        return;
+    }
 
     /* get chip name */
     if (inv_get_chip_name(chip_ID) != INV_SUCCESS) {
@@ -215,10 +204,11 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     /* reset driver master enable */
     masterEnable(0);
 
-    if (isLowPowerQuatEnabled() || isDmpDisplayOrientationOn()) {
-        /* Load DMP image if capable, ie. MPU6xxx/9xxx */
-        loadDMP();
-    }
+    /* Load DMP image if capable, ie. MPU6xxx/9xxx */
+    // TODO: disabled for GED tablet
+#ifdef ENABLE_LP_QUAT_FEAT
+    loadDMP();
+#endif
 
     /* open temperature fd for temp comp */
     LOGV_IF(EXTRA_VERBOSE, "HAL:gyro temperature path: %s", mpu.temperature);
@@ -279,11 +269,6 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     mPendingEvents[Gyro].type = SENSOR_TYPE_GYROSCOPE;
     mPendingEvents[Gyro].gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
 
-    mPendingEvents[RawGyro].version = sizeof(sensors_event_t);
-    mPendingEvents[RawGyro].sensor = ID_RG;
-    mPendingEvents[RawGyro].type = SENSOR_TYPE_GYROSCOPE;
-    mPendingEvents[RawGyro].gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
-
     mPendingEvents[Accelerometer].version = sizeof(sensors_event_t);
     mPendingEvents[Accelerometer].sensor = ID_A;
     mPendingEvents[Accelerometer].type = SENSOR_TYPE_ACCELEROMETER;
@@ -307,12 +292,11 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     mHandlers[LinearAccel] = &MPLSensor::laHandler;
     mHandlers[Gravity] = &MPLSensor::gravHandler;
     mHandlers[Gyro] = &MPLSensor::gyroHandler;
-    mHandlers[RawGyro] = &MPLSensor::rawGyroHandler;
     mHandlers[Accelerometer] = &MPLSensor::accelHandler;
     mHandlers[MagneticField] = &MPLSensor::compassHandler;
     mHandlers[Orientation] = &MPLSensor::orienHandler;
 
-    for (int i = 0; i < NUMSENSORS; i++) {
+    for (int i = 0; i < numSensors; i++) {
         mDelays[i] = 0;
     }
 
@@ -322,34 +306,12 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     /* setup MPL */
     inv_constructor_init();
 
-    /* load calibration file from /data/inv_cal_data.bin */
+    /* load calibration file from /data/cal.bin */
     rv = inv_load_calibration();
     if(rv == INV_SUCCESS)
         LOGV_IF(PROCESS_VERBOSE, "HAL:Calibration file successfully loaded");
     else
         LOGE("HAL:Could not open or load MPL calibration file (%d)", rv);
-
-    /* Takes external Accel Calibration Load Method */
-    if( m_pt2AccelCalLoadFunc != NULL)
-    {
-        long accel_offset[3];
-        long tmp_offset[3];
-        int result = m_pt2AccelCalLoadFunc(accel_offset);
-        if(result)
-            LOGW("HAL:Vendor accelerometer calibration file load failed %d\n", result);
-        else
-        {
-            LOGW("HAL:Vendor accelerometer calibration file successfully loaded");
-            inv_get_accel_bias(tmp_offset, NULL);
-            LOGV_IF(PROCESS_VERBOSE, "HAL:Original accel offset, %ld, %ld, %ld\n",
-               tmp_offset[0], tmp_offset[1], tmp_offset[2]);
-            inv_set_accel_bias(accel_offset, mAccelAccuracy);
-            inv_get_accel_bias(tmp_offset, NULL);
-            LOGV_IF(PROCESS_VERBOSE, "HAL:Set accel offset, %ld, %ld, %ld\n",
-               tmp_offset[0], tmp_offset[1], tmp_offset[2]);
-        }
-    }
-    /* End of Accel Calibration Load Method */
 
     inv_set_device_properties();
 
@@ -358,84 +320,67 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     enableGyro(0);
     enableAccel(0);
     enableCompass(0);
-
-    if ( isLowPowerQuatEnabled() ) {
-        enableLPQuaternion(0);
-    }
-
     onPower(0);
-
-    if (isDmpDisplayOrientationOn()) {
-        enableDmpOrientation(isDmpDisplayOrientationOn());
-        enableDmpOrientation(!isDmpScreenAutoRotationEnabled()
-            && isDmpDisplayOrientationOn());
-    }
 
 #ifdef INV_PLAYBACK_DBG
     logfile = fopen("/data/playback.bin", "wb");
     if (logfile)
         inv_turn_on_data_logging(logfile);
 #endif
+
+    mMplSensorInitialized = true;
 }
 
-void MPLSensor::enable_iio_sysfs()
-{
+
+void MPLSensor::enable_iio_sysfs() {
     VFUNC_LOG;
 
+    int tempFd = 0;
     char iio_trigger_name[MAX_CHIP_ID_LEN], iio_device_node[MAX_CHIP_ID_LEN];
     FILE *tempFp = NULL;
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo 1 > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, 
+            "HAL:sysfs:echo 1 > %s (%lld)", 
             mpu.in_timestamp_en, getTimestamp());
-    // fopen()/open() would both be okay for sysfs access
-    // developers could choose what they want
-    // with fopen(), benefits from fprintf()/fscanf() would be available
-    tempFp = fopen(mpu.in_timestamp_en, "w");
-    if (tempFp == NULL) {
+    tempFd = open(mpu.in_timestamp_en, O_RDWR);
+    if(tempFd < 0) {
         LOGE("HAL:could not open timestamp enable");
-    } else {
-        if(fprintf(tempFp, "%d", 1) < 0) {
-            LOGE("HAL:could not enable timestamp");
-        }
-        fclose(tempFp);
+    } else if(enable_sysfs_sensor(tempFd, 1) < 0) {
+        LOGE("HAL:could not enable timestamp");
     }
 
-    LOGV_IF(SYSFS_VERBOSE,
-            "HAL:sysfs:cat %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, 
+            "HAL:sysfs:cat %s (%lld)", 
             mpu.trigger_name, getTimestamp());
     tempFp = fopen(mpu.trigger_name, "r");
     if (tempFp == NULL) {
         LOGE("HAL:could not open trigger name");
-    } else {
-        if (fscanf(tempFp, "%s", iio_trigger_name) < 0) {
-            LOGE("HAL:could not read trigger name");
-        }
-        fclose(tempFp);
+    } else if (fscanf(tempFp, "%s", iio_trigger_name) < 0) {
+        LOGE("HAL:could not read trigger name");
     }
+    fclose(tempFp);
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %s > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, 
+            "HAL:sysfs:echo %s > %s (%lld)", 
             iio_trigger_name, mpu.current_trigger, getTimestamp());
     tempFp = fopen(mpu.current_trigger, "w");
     if (tempFp == NULL) {
         LOGE("HAL:could not open current trigger");
-    } else {
-        if (fprintf(tempFp, "%s", iio_trigger_name) < 0) {
-            LOGE("HAL:could not write current trigger");
-        }
-        fclose(tempFp);
+    } else if (fprintf(tempFp, "%s", iio_trigger_name) < 0) {
+        LOGE("HAL:could not write current trigger");
     }
+    fclose(tempFp);
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, 
+            "HAL:sysfs:echo %d > %s (%lld)", 
             IIO_BUFFER_LENGTH, mpu.buffer_length, getTimestamp());
     tempFp = fopen(mpu.buffer_length, "w");
     if (tempFp == NULL) {
         LOGE("HAL:could not open buffer length");
-    } else {
-        if (fprintf(tempFp, "%d", IIO_BUFFER_LENGTH) < 0) {
-            LOGE("HAL:could not write buffer length");
-        }
-        fclose(tempFp);
+    } else if (fprintf(tempFp, "%d", IIO_BUFFER_LENGTH) < 0) {
+        LOGE("HAL:could not write buffer length");
     }
+    fclose(tempFp);
 
     inv_get_iio_device_node(iio_device_node);
     iio_fd = open(iio_device_node, O_RDONLY);
@@ -483,6 +428,7 @@ int MPLSensor::inv_constructor_default_enable()
         return result;
     }
 
+    // TODO: double-check for GED tablet
     // result = inv_enable_motion_no_motion();
     result = inv_enable_fast_nomot();
     if (result) {
@@ -506,12 +452,7 @@ int MPLSensor::inv_constructor_default_enable()
         if (result) {
             LOG_RESULT_LOCATION(result);
             return result;
-        } else {
-            mFeatureActiveMask |= INV_COMPASS_CAL;
         }
-
-        // specify MPL's trust weight, used by compass algorithms
-        inv_vector_compass_cal_sensitivity(3);
 
         result = inv_enable_compass_bias_w_gyro();
         if (result) {
@@ -536,9 +477,6 @@ int MPLSensor::inv_constructor_default_enable()
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
-    } else {
-        // 9x sensor fusion enables Compass fit
-        mFeatureActiveMask |= INV_COMPASS_FIT;
     }
 
     result = inv_enable_no_gyro_fusion();
@@ -547,6 +485,7 @@ int MPLSensor::inv_constructor_default_enable()
         return result;
     }
 
+    // TODO: double-check for GED tablet
     result = inv_enable_quat_accuracy_monitor();
     if (result) {
         LOG_RESULT_LOCATION(result);
@@ -574,15 +513,15 @@ void MPLSensor::inv_set_device_properties()
 
     /* accel setup */
     orient = inv_orientation_matrix_to_scalar(mAccelOrientation);
-    /* use for third party accel input subsystem driver
-    inv_set_accel_orientation_and_scale(orient, 1LL << 22);
-    */
+    // BMA250
+    //inv_set_accel_orientation_and_scale(orient, 1LL << 22);
+    // MPU6050
     inv_set_accel_orientation_and_scale(orient, mAccelScale << 15);
 
     /* compass setup */
     signed char orientMtx[9];
     mCompassSensor->getOrientationMatrix(orientMtx);
-    orient =
+    orient = 
         inv_orientation_matrix_to_scalar(orientMtx);
     long sensitivity;
     sensitivity = mCompassSensor->getSensitivity();
@@ -594,13 +533,13 @@ void MPLSensor::loadDMP()
     int res, fd;
     FILE *fptr;
 
-    if (isMpu3050() == true) {
+    if (!strcmp(chip_ID, "mpu3050") || !strcmp(chip_ID, "MPU3050")) {
         //DMP support only for MPU6xxx/9xxx currently
         return;
     }
 
     /* load DMP firmware */
-    LOGV_IF(SYSFS_VERBOSE,
+    LOGV_IF(SYSFS_VERBOSE, 
             "HAL:sysfs:cat %s (%lld)", mpu.firmware_loaded, getTimestamp());
     fd = open(mpu.firmware_loaded, O_RDONLY);
     if(fd < 0) {
@@ -633,13 +572,13 @@ void MPLSensor::inv_get_sensors_orientation()
     FILE *fptr;
 
     // get gyro orientation
-    LOGV_IF(SYSFS_VERBOSE,
+    LOGV_IF(SYSFS_VERBOSE, 
             "HAL:sysfs:cat %s (%lld)", mpu.gyro_orient, getTimestamp());
     fptr = fopen(mpu.gyro_orient, "r");
     if (fptr != NULL) {
         int om[9];
         fscanf(fptr, "%d,%d,%d,%d,%d,%d,%d,%d,%d",
-               &om[0], &om[1], &om[2], &om[3], &om[4], &om[5],
+               &om[0], &om[1], &om[2], &om[3], &om[4], &om[5], 
                &om[6], &om[7], &om[8]);
         fclose(fptr);
 
@@ -662,13 +601,13 @@ void MPLSensor::inv_get_sensors_orientation()
     }
 
     // get accel orientation
-    LOGV_IF(SYSFS_VERBOSE,
+    LOGV_IF(SYSFS_VERBOSE, 
             "HAL:sysfs:cat %s (%lld)", mpu.accel_orient, getTimestamp());
     fptr = fopen(mpu.accel_orient, "r");
     if (fptr != NULL) {
         int om[9];
-        fscanf(fptr, "%d,%d,%d,%d,%d,%d,%d,%d,%d",
-               &om[0], &om[1], &om[2], &om[3], &om[4], &om[5],
+        fscanf(fptr, "%d,%d,%d,%d,%d,%d,%d,%d,%d", 
+               &om[0], &om[1], &om[2], &om[3], &om[4], &om[5], 
                &om[6], &om[7], &om[8]);
         fclose(fptr);
 
@@ -698,16 +637,13 @@ MPLSensor::~MPLSensor()
     /* Close open fds */
     if (iio_fd > 0)
         close(iio_fd);
+
     if( accel_fd > 0 )
         close(accel_fd );
     if (gyro_temperature_fd > 0)
         close(gyro_temperature_fd);
     if (sysfs_names_ptr)
         free(sysfs_names_ptr);
-
-    if (isDmpDisplayOrientationOn()) {
-        closeDmpOrientFd();
-    }
 
     /* Turn off Gyro master enable          */
     /* A workaround until driver handles it */
@@ -729,13 +665,18 @@ MPLSensor::~MPLSensor()
 #endif
 }
 
-#define GY_ENABLED (((1 << ID_GY) | (1 << ID_RG)) & enabled_sensors)
-#define A_ENABLED  ((1 << ID_A)  & enabled_sensors)
+#define GY_ENABLED ((1 << ID_GY) & enabled_sensors) // ID_GY = 0
+#define A_ENABLED  ((1 << ID_A)  & enabled_sensors) // ID_A  = 1
+#ifdef INVENSENSE_COMPASS_CAL                       // ID_M  = 2
 #define M_ENABLED  ((1 << ID_M)  & enabled_sensors)
-#define O_ENABLED  ((1 << ID_O)  & enabled_sensors)
-#define LA_ENABLED ((1 << ID_LA) & enabled_sensors)
-#define GR_ENABLED ((1 << ID_GR) & enabled_sensors)
-#define RV_ENABLED ((1 << ID_RV) & enabled_sensors)
+#else
+// TODO: ID_M = 2 even for 3rd-party solution
+#define M_ENABLED  ((1 << ID_M)  & enabled_sensors)
+#endif
+#define O_ENABLED  ((1 << ID_O)  & enabled_sensors) // ID_O  = 3
+#define LA_ENABLED ((1 << ID_LA) & enabled_sensors) // ID_RV = 4
+#define GR_ENABLED ((1 << ID_GR) & enabled_sensors) // ID_LA = 5
+#define RV_ENABLED ((1 << ID_RV) & enabled_sensors) // ID_GR = 6
 
 /* TODO: this step is optional, remove?  */
 int MPLSensor::setGyroInitialState()
@@ -744,7 +685,7 @@ int MPLSensor::setGyroInitialState()
 
     int res = 0;
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
             HW_GYRO_RATE_HZ, mpu.gyro_fifo_rate, getTimestamp());
     int fd = open(mpu.gyro_fifo_rate, O_RDWR);
     res = errno;
@@ -765,7 +706,7 @@ int MPLSensor::setGyroInitialState()
     return 0;
 }
 
-/* this applies to BMA250 Input Subsystem Driver only */
+/* this applies to BMA250 only */
 int MPLSensor::setAccelInitialState()
 {
     VFUNC_LOG;
@@ -796,7 +737,7 @@ int MPLSensor::onPower(int en)
     char buf[sizeof(int)+1];
     int count, curr_power_state;
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
             en, mpu.power_state, getTimestamp());
     int tempFd = open(mpu.power_state, O_RDWR);
     res = errno;
@@ -813,16 +754,16 @@ int MPLSensor::onPower(int en)
         } else {
             sscanf(buf, "%d", &curr_power_state);
         }
-
-        if (en!=curr_power_state) {
+       
+        if (en!=curr_power_state) {    
             if((res=enable_sysfs_sensor(tempFd, en)) < 0) {
                 LOGE("HAL:Couldn't write power state");
             }
         } else {
             LOGV_IF(EXTRA_VERBOSE,
-                    "HAL:Power state already enable/disable curr=%d new=%d",
+                    "HAL:Power state already enable/disable curr=%d new=%d", 
                     curr_power_state, en);
-            close(tempFd);
+            close(tempFd);   
         }
     }
     return res;
@@ -841,32 +782,24 @@ int MPLSensor::onDMP(int en)
     //3. Either Gyro or Accel must be enabled/configured before next step
     //4. Enable DMP
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:cat %s (%lld)",
-            mpu.firmware_loaded, getTimestamp());
     if(read_sysfs_int(mpu.firmware_loaded, &status) < 0){
         LOGE("HAL:ERR can't get firmware_loaded status");
     } else if (status == 1) {
         //Write only if curr DMP state <> request
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:cat %s (%lld)",
-                mpu.dmp_on, getTimestamp());
         if (read_sysfs_int(mpu.dmp_on, &status) < 0) {
             LOGE("HAL:ERR can't read DMP state");
         } else if (status != en) {
-            LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                    en, mpu.dmp_on, getTimestamp());
             if (write_sysfs_int(mpu.dmp_on, en) < 0) {
-                LOGE("HAL:ERR can't write dmp_on");
+                LOGE("HAL:ERR can't write dmp_on");  
             } else {
-                res = 0;	//Indicate write successful
+                res= 0;	//Indicate write successful
             }
             //Enable DMP interrupt
-            LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                    en, mpu.dmp_int_on, getTimestamp());
             if (write_sysfs_int(mpu.dmp_int_on, en) < 0) {
-                LOGE("HAL:ERR can't en/dis DMP interrupt");
+                LOGE("HAL:ERR can't en/dis DMP interrupt");  
             }
         } else {
-            res= 0;	//DMP already set as requested
+            res= 0;  	//DMP already set as requested
         }
     } else {
         LOGE("HAL:ERR No DMP image");
@@ -891,7 +824,7 @@ int MPLSensor::enableLPQuaternion(int en)
         mFeatureActiveMask &= ~INV_DMP_QUATERNION;
         LOGV_IF(PROCESS_VERBOSE, "HAL:LP Quat disabled");
     } else {
-        if (enableQuaternionData(1) < 0 || onDMP(1) < 0) {
+        if (enableQuaternionData(1) < 0 || onDMP(1) < 0) {    
             LOGE("HAL:ERR can't enable LP Quaternion");
         } else {
             mFeatureActiveMask |= INV_DMP_QUATERNION;
@@ -906,65 +839,33 @@ int MPLSensor::enableQuaternionData(int en)
     int res= 0;
     VFUNC_LOG;
 
-    // Enable DMP quaternion
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-            en, mpu.quaternion_on, getTimestamp());
+    //Enable DMP quaternion
     if (write_sysfs_int(mpu.quaternion_on, en) < 0) {
         LOGE("HAL:ERR can't write DMP quaternion_on");
-        res = -1;	//Indicate an err
-    }
+        res= -1;	//Indicate an err
+    } 
 
     if (!en) {
-        LOGV_IF(PROCESS_VERBOSE, "HAL:Disabling quat scan elems");
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                0, mpu.in_quat_r_en, getTimestamp());
-        if (write_sysfs_int(mpu.in_quat_r_en, 0) < 0) {
-            LOGE("HAL:ERR write in_quat_r_en");
-        }
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                0, mpu.in_quat_x_en, getTimestamp());
-        if (write_sysfs_int(mpu.in_quat_x_en, 0) < 0) {
-            LOGE("HAL:ERR write in_quat_x_en");
-        }
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                0, mpu.in_quat_y_en, getTimestamp());
-        if (write_sysfs_int(mpu.in_quat_y_en, 0) < 0) {
-            LOGE("HAL:ERR write in_quat_y_en");
-        }
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                0, mpu.in_quat_z_en, getTimestamp());
-
-        if (write_sysfs_int(mpu.in_quat_z_en, 0) < 0) {
-            LOGE("HAL:ERR write in_quat_z_en");
-        }
-
         LOGV_IF(EXTRA_VERBOSE, "HAL:DMP quaternion data was turned off");
         inv_quaternion_sensor_was_turned_off();
     } else {
         LOGV_IF(PROCESS_VERBOSE, "HAL:Enabling quat scan elems");
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                1, mpu.in_quat_r_en, getTimestamp());
         if (write_sysfs_int(mpu.in_quat_r_en, 1) < 0) {
             LOGE("HAL:ERR write in_quat_r_en");
         }
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                1, mpu.in_quat_x_en, getTimestamp());
         if (write_sysfs_int(mpu.in_quat_x_en, 1) < 0) {
             LOGE("HAL:ERR write in_quat_x_en");
         }
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                1, mpu.in_quat_y_en, getTimestamp());
         if (write_sysfs_int(mpu.in_quat_y_en, 1) < 0) {
             LOGE("HAL:ERR write in_quat_y_en");
         }
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                1, mpu.in_quat_z_en, getTimestamp());
         if (write_sysfs_int(mpu.in_quat_z_en, 1) < 0) {
-            LOGE("HAL:ERR write in_quat_z_en");
+            LOGE("HAL:ERR write in_quat_z_en"); 
         }
     }
 
     return res;
+
 }
 
 int MPLSensor::enableTap(int en)
@@ -994,7 +895,7 @@ int MPLSensor::masterEnable(int en)
 
     int res = 0;
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
             en, mpu.chip_enable, getTimestamp());
     int tempFd = open(mpu.chip_enable, O_RDWR);
     res = errno;
@@ -1014,7 +915,7 @@ int MPLSensor::enableGyro(int en)
     int res = 0;
 
     /* need to also turn on/off the master enable */
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
             en, mpu.gyro_enable, getTimestamp());
     int tempFd = open(mpu.gyro_enable, O_RDWR);
     res = errno;
@@ -1029,7 +930,7 @@ int MPLSensor::enableGyro(int en)
         LOGV_IF(EXTRA_VERBOSE, "HAL:MPL:inv_gyro_was_turned_off");
         inv_gyro_was_turned_off();
     } else {
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, mpu.gyro_x_fifo_enable, getTimestamp());
         tempFd = open(mpu.gyro_x_fifo_enable, O_RDWR);
         res = errno;
@@ -1040,7 +941,7 @@ int MPLSensor::enableGyro(int en)
                  mpu.gyro_x_fifo_enable, strerror(res), res);
         }
 
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, mpu.gyro_y_fifo_enable, getTimestamp());
         tempFd = open(mpu.gyro_y_fifo_enable, O_RDWR);
         res = errno;
@@ -1051,7 +952,7 @@ int MPLSensor::enableGyro(int en)
                  mpu.gyro_y_fifo_enable, strerror(res), res);
         }
 
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, mpu.gyro_z_fifo_enable, getTimestamp());
         tempFd = open(mpu.gyro_z_fifo_enable, O_RDWR);
         res = errno;
@@ -1072,23 +973,23 @@ int MPLSensor::enableAccel(int en)
 
     int res;
 
-    /* need to also turn on/off the master enable */
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-            en, mpu.accel_enable, getTimestamp());
-    int tempFd = open(mpu.accel_enable, O_RDWR);
-    res = errno;
-    if (tempFd > 0) {
-        res = enable_sysfs_sensor(tempFd, en);
-    } else {
-        LOGE("HAL:open of %s failed with '%s' (%d)",
-             mpu.accel_enable, strerror(res), res);
-    }
+   /* need to also turn on/off the master enable */
+   LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
+           en, mpu.accel_enable, getTimestamp());
+   int tempFd = open(mpu.accel_enable, O_RDWR);
+   res = errno;
+   if (tempFd > 0) {
+       res = enable_sysfs_sensor(tempFd, en);
+   } else {
+       LOGE("HAL:open of %s failed with '%s' (%d)",
+            mpu.accel_enable, strerror(res), res);
+   }
 
     if (!en) {
         LOGV_IF(EXTRA_VERBOSE, "HAL:MPL:inv_accel_was_turned_off");
         inv_accel_was_turned_off();
     } else {
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, mpu.accel_x_fifo_enable, getTimestamp());
         tempFd = open(mpu.accel_x_fifo_enable, O_RDWR);
         res = errno;
@@ -1099,7 +1000,7 @@ int MPLSensor::enableAccel(int en)
                  mpu.accel_x_fifo_enable, strerror(res), res);
         }
 
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, mpu.accel_y_fifo_enable, getTimestamp());
         tempFd = open(mpu.accel_y_fifo_enable, O_RDWR);
         res = errno;
@@ -1110,7 +1011,7 @@ int MPLSensor::enableAccel(int en)
                  mpu.accel_y_fifo_enable, strerror(res), res);
         }
 
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, mpu.accel_z_fifo_enable, getTimestamp());
         tempFd = open(mpu.accel_z_fifo_enable, O_RDWR);
         res = errno;
@@ -1123,10 +1024,10 @@ int MPLSensor::enableAccel(int en)
     }
 
     if (!en && USE_THIRD_PARTY_ACCEL == 0) {
-    }
+    } 
 
     if(USE_THIRD_PARTY_ACCEL == 1 && en) {
-        //setAccelInitialState();// BMA250
+        setAccelInitialState(); // BMA250
     }
     return res;
 }
@@ -1139,7 +1040,7 @@ int MPLSensor::enableCompass(int en)
     if (en == 0) {
         LOGV_IF(EXTRA_VERBOSE, "HAL:MPL:inv_compass_was_turned_off");
         inv_compass_was_turned_off();
-    }
+    } 
     return res;
 }
 
@@ -1194,20 +1095,18 @@ int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed) {
     inv_error_t res = -1;
     int on = 1;
     int off = 0;
-    int cal_stored = 0;
 
     // Sequence to enable or disable a sensor
-    // 1. enable Power state
+    // 1. enable Power state 
     // 2. reset master enable (=0)
     // 3. enable or disable a sensor
     // 4. set master enable (=1)
 
-    if (isLowPowerQuatEnabled() ||
-        changed & ((1 << Gyro) | (1 << RawGyro) | (1 << Accelerometer) |
-        (mCompassSensor->isIntegrated() << MagneticField))) {
+    if (changed & ((1 << Gyro) | (1 << Accelerometer) |
+            (mCompassSensor->isIntegrated() << MagneticField))) {
         /* ensure power state is on */
         onPower(1);
-
+      
         /* reset master enable */
         res = masterEnable(0);
         if(res < 0) {
@@ -1217,44 +1116,34 @@ int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed) {
 
     LOGV_IF(PROCESS_VERBOSE, "HAL:enableSensors - sensors: 0x%0x", (unsigned int)sensors);
 
-    if (changed & ((1 << Gyro) | (1 << RawGyro))) {
-        if (sensors & INV_THREE_AXIS_GYRO) {
+    if (changed & (1 << Gyro)) {
+        if(sensors & INV_THREE_AXIS_GYRO) {
             LOGV_IF(PROCESS_VERBOSE, "HAL:enableSensors - enable gyro");
             res = enableGyro(on);
             if(res < 0) {
                 return res;
             }
-        } else if ((sensors & INV_THREE_AXIS_GYRO) == 0) {
+        } else if((sensors & INV_THREE_AXIS_GYRO) == 0) {
             LOGV_IF(PROCESS_VERBOSE, "HAL:enableSensors - disable gyro");
             res = enableGyro(off);
             if(res < 0) {
                 return res;
             }
-
-            if (!cal_stored) {
-                storeCalibration();
-                cal_stored = 1;
-            }
         }
     }
 
     if (changed & (1 << Accelerometer)) {
-        if (sensors & INV_THREE_AXIS_ACCEL) {
+        if(sensors & INV_THREE_AXIS_ACCEL) {
             LOGV_IF(PROCESS_VERBOSE, "HAL:enableSensors - enable accel");
             res = enableAccel(on);
             if(res < 0) {
                 return res;
             }
-        } else if ((sensors & INV_THREE_AXIS_ACCEL) == 0) {
+        } else if((sensors & INV_THREE_AXIS_ACCEL) == 0) {
             LOGV_IF(PROCESS_VERBOSE, "HAL:enableSensors - disable accel");
             res = enableAccel(off);
             if(res < 0) {
                 return res;
-            }
-
-            if (!cal_stored) {
-                storeCalibration();
-                cal_stored = 1;
             }
         }
     }
@@ -1273,121 +1162,51 @@ int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed) {
             if(res < 0) {
                 return res;
             }
-
-            if (!cal_stored) {
-                storeCalibration();
-                cal_stored = 1;
-            }
         }
     }
 
-    if ( isLowPowerQuatEnabled() ) {
-        // Enable LP Quat
-        if ((mEnabled & ((1 << Orientation) | (1 << RotationVector) |
-                (1 << LinearAccel) | (1 << Gravity)))) {
-            if (!(changed & ((1 << Gyro) | (1 << RawGyro) | (1 << Accelerometer) |
-                    (mCompassSensor->isIntegrated() << MagneticField)))) {
-                /* ensure power state is on */
-                onPower(1);
-                /* reset master enable */
-                res = masterEnable(0);
-                if(res < 0) {
-                    return res;
-                }
-            }
-            if (!checkLPQuaternion()) {
-                enableLPQuaternion(1);
-            } else {
-                LOGV_IF(PROCESS_VERBOSE, "HAL:LP Quat already enabled");
-            }
-        } else if (checkLPQuaternion()) {
-            enableLPQuaternion(0);
+// TODO: disabled for GED tablet
+#ifdef ENABLE_LP_QUAT_FEAT
+    // Enable LP Quat
+    if ((mEnabled & ((1 << Orientation) | (1 << RotationVector) |
+            (1 << LinearAccel) | (1 << Gravity)))) {
+        if (!checkLPQuaternion()) {
+            enableLPQuaternion(1);
+        } else {
+            LOGV_IF(PROCESS_VERBOSE, "HAL:LP Quat already enabled");
         }
+    } else if (checkLPQuaternion()) {
+        enableLPQuaternion(0);
     }
+#endif
 
-    if (changed & ((1 << Gyro) | (1 << RawGyro) | (1 << Accelerometer) |
+    /*
+        if sensor & THREE_AXIS_GYRO
+            enable = 1
+        if sensor & THREE_AXIS_ACCEL
+            enable = 1
+        if compass_on_secondary
+            if sensor & THREE_AXIS_COMPASS
+                enable = 1
+        else
+            enable = 0
+    */
+    if (changed & ((1 << Gyro) | (1 << Accelerometer) |
             (mCompassSensor->isIntegrated() << MagneticField))) {
-        if (sensors &
-            (INV_THREE_AXIS_GYRO
-                | INV_THREE_AXIS_ACCEL
+        if (sensors & 
+            (INV_THREE_AXIS_GYRO 
+                | INV_THREE_AXIS_ACCEL 
                 | (INV_THREE_AXIS_COMPASS * mCompassSensor->isIntegrated()))) {
-            if ( isLowPowerQuatEnabled() ||
-                    (isDmpDisplayOrientationOn() && mDmpOrientationEnabled) ) {
-                // disable DMP event interrupt only (w/ data interrupt)
-                LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                        0, mpu.dmp_event_int_on, getTimestamp());
-                if (write_sysfs_int(mpu.dmp_event_int_on, 0) < 0) {
-                    res = -1;
-                    LOGE("HAL:ERR can't disable DMP event interrupt");
-                    return res;
-                }
-            }
-
-            if (isDmpDisplayOrientationOn() && mDmpOrientationEnabled) {
-                // enable DMP
-                onDMP(1);
-
-                res = enableAccel(on);
-                if(res < 0) {
-                    return res;
-                }
-
-                if ((sensors & INV_THREE_AXIS_ACCEL) == 0) {
-                    res = turnOffAccelFifo();
-                }
-                if(res < 0) {
-                    return res;
-                }
-            }
-
             res = masterEnable(1);
             if(res < 0) {
                 return res;
             }
         } else { // all sensors idle -> reduce power
-            if (isDmpDisplayOrientationOn() && mDmpOrientationEnabled) {
-                // enable DMP
-                onDMP(1);
-                // enable DMP event interrupt only (no data interrupt)
-                LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                        1, mpu.dmp_event_int_on, getTimestamp());
-                if (write_sysfs_int(mpu.dmp_event_int_on, 1) < 0) {
-                    res = -1;
-                    LOGE("HAL:ERR can't enable DMP event interrupt");
-                }
-                res = enableAccel(on);
-                if(res < 0) {
-                    return res;
-                }
-                if ((sensors & INV_THREE_AXIS_ACCEL) == 0) {
-                    res = turnOffAccelFifo();
-                }
-                if(res < 0) {
-                    return res;
-                }
-                res = masterEnable(1);
-                if(res < 0) {
-                    return res;
-                }
+            res = onPower(0);
+            if(res < 0) {
+                return res;
             }
-            else {
-                res = onPower(0);
-                if(res < 0) {
-                    return res;
-                }
-            }
-
-            if (!cal_stored) {
-                storeCalibration();
-                cal_stored = 1;
-            }
-        }
-    } else if ((changed & ((!mCompassSensor->isIntegrated()) << MagneticField)) &&
-            !(sensors & (INV_THREE_AXIS_GYRO | INV_THREE_AXIS_ACCEL
-                | (INV_THREE_AXIS_COMPASS * (!mCompassSensor->isIntegrated()))))) {
-        if (!cal_stored) {
             storeCalibration();
-            cal_stored = 1;
         }
     }
 
@@ -1397,7 +1216,7 @@ int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed) {
 /* Store calibration file */
 void MPLSensor::storeCalibration()
 {
-    if(mHaveGoodMpuCal == true || mAccelAccuracy >= 2 || mCompassAccuracy >= 3) {
+    if(mHaveGoodMpuCal == true || mAccelAccuracy >= 2) {
        int res = inv_store_calibration();
        if (res) {
            LOGE("HAL:Cannot store calibration on file");
@@ -1425,16 +1244,6 @@ int MPLSensor::gyroHandler(sensors_event_t* s)
     return update;
 }
 
-int MPLSensor::rawGyroHandler(sensors_event_t* s)
-{
-    VHANDLER_LOG;
-    int update;
-    update = inv_get_sensor_type_gyroscope_raw(s->gyro.v, &s->gyro.status, &s->timestamp);
-    LOGV_IF(HANDLER_DATA, "HAL:raw gyro data : %+f %+f %+f -- %lld - %d",
-            s->gyro.v[0], s->gyro.v[1], s->gyro.v[2], s->timestamp, update);
-    return update;
-}
-
 int MPLSensor::accelHandler(sensors_event_t* s)
 {
     VHANDLER_LOG;
@@ -1442,7 +1251,7 @@ int MPLSensor::accelHandler(sensors_event_t* s)
     update = inv_get_sensor_type_accelerometer(
         s->acceleration.v, &s->acceleration.status, &s->timestamp);
     LOGV_IF(HANDLER_DATA, "HAL:accel data : %+f %+f %+f -- %lld - %d",
-            s->acceleration.v[0], s->acceleration.v[1], s->acceleration.v[2],
+            s->acceleration.v[0], s->acceleration.v[1], s->acceleration.v[2], 
             s->timestamp, update);
     mAccelAccuracy = s->acceleration.status;
     return update;
@@ -1456,7 +1265,6 @@ int MPLSensor::compassHandler(sensors_event_t* s)
         s->magnetic.v, &s->magnetic.status, &s->timestamp);
     LOGV_IF(HANDLER_DATA, "HAL:compass data: %+f %+f %+f -- %lld - %d",
             s->magnetic.v[0], s->magnetic.v[1], s->magnetic.v[2], s->timestamp, update);
-    mCompassAccuracy = s->magnetic.status;
     return update;
 }
 
@@ -1509,17 +1317,9 @@ int MPLSensor::enable(int32_t handle, int en)
     VFUNC_LOG;
 
     android::String8 sname;
-    int what = -1, err = 0;
+    int what = -1;
 
     switch (handle) {
-    case ID_SO:
-        sname = "Screen Orientation";
-        LOGV_IF(PROCESS_VERBOSE, "HAL:enable - sensor %s (handle %d) %s -> %s", sname.string(), handle,
-            (mDmpOrientationEnabled? "en": "dis"),
-            (en? "en" : "dis"));
-        enableDmpOrientation(en && isDmpDisplayOrientationOn());
-        mDmpOrientationEnabled = en;
-        return 0;
     case ID_A:
         what = Accelerometer;
         sname = "Accelerometer";
@@ -1535,10 +1335,6 @@ int MPLSensor::enable(int32_t handle, int en)
     case ID_GY:
         what = Gyro;
         sname = "Gyro";
-        break;
-    case ID_RG:
-        what = RawGyro;
-        sname = "RawGyro";
         break;
     case ID_GR:
         what = Gravity;
@@ -1558,10 +1354,11 @@ int MPLSensor::enable(int32_t handle, int en)
         break;
     }
 
-    if (uint32_t(what) >= NUMSENSORS)
+    if (uint32_t(what) >= numSensors)
         return -EINVAL;
 
     int newState = en ? 1 : 0;
+    int err = 0;
     unsigned long sen_mask;
 
     LOGV_IF(PROCESS_VERBOSE, "HAL:enable - sensor %s (handle %d) %s -> %s", sname.string(), handle,
@@ -1570,6 +1367,7 @@ int MPLSensor::enable(int32_t handle, int en)
     LOGV_IF(PROCESS_VERBOSE,
             "HAL:%s sensor state change what=%d", sname.string(), what);
 
+    // TODO: disabled for GED tablet
     // pthread_mutex_lock(&mMplMutex);
     // pthread_mutex_lock(&mHALMutex);
 
@@ -1591,7 +1389,6 @@ int MPLSensor::enable(int32_t handle, int en)
 
         switch (what) {
             case Gyro:
-            case RawGyro:
             case Accelerometer:
             case MagneticField:
                 if (!(mEnabled & ((1 << Orientation) | (1 << RotationVector) |
@@ -1625,7 +1422,7 @@ int MPLSensor::enable(int32_t handle, int en)
     // pthread_mutex_unlock(&mHALMutex);
 
 #ifdef INV_PLAYBACK_DBG
-    /* apparently the logging needs to be go through this sequence
+    /* apparently the logging needs to be go through this sequence 
        to properly flush the log file */
     inv_turn_off_data_logging();
     fclose(logfile);
@@ -1645,46 +1442,41 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
     int what = -1;
 
     switch (handle) {
-        case ID_SO:
-            return update_delay();
-        case ID_A:
-            what = Accelerometer;
-            sname = "Accelerometer";
-            break;
-        case ID_M:
-            what = MagneticField;
-            sname = "MagneticField";
-            break;
-        case ID_O:
-            what = Orientation;
-            sname = "Orientation";
-            break;
-        case ID_GY:
-            what = Gyro;
-            sname = "Gyro";
-            break;
-        case ID_RG:
-            what = RawGyro;
-            sname = "RawGyro";
-            break;
-        case ID_GR:
-            what = Gravity;
-            sname = "Gravity";
-            break;
-        case ID_RV:
-            what = RotationVector;
-            sname = "RotationVector";
-            break;
-        case ID_LA:
-            what = LinearAccel;
-            sname = "LinearAccel";
-            break;
-        default: // this takes care of all the gestures
-            what = handle;
-            sname = "Others";
-            break;
+    case ID_A:
+        what = Accelerometer;
+        sname = "Accelerometer";
+        break;
+    case ID_M:
+        what = MagneticField;
+        sname = "MagneticField";
+        break;
+    case ID_O:
+        what = Orientation;
+        sname = "Orientation";
+        break;
+    case ID_GY:
+        what = Gyro;
+        sname = "Gyro";
+        break;
+    case ID_GR:
+        what = Gravity;
+        sname = "Gravity";
+        break;
+    case ID_RV:
+        what = RotationVector;
+        sname = "RotationVector";
+        break;
+    case ID_LA:
+        what = LinearAccel;
+        sname = "LinearAccel";
+        break;
+    default: // this takes care of all the gestures
+        what = handle;
+        sname = "Others";
+        break;
     }
 
+// TODO: disabled for GED tablet
 #if 0
     // skip the 1st call for enalbing sensors called by ICS/JB sensor service
     static int counter_delay = 0;
@@ -1700,7 +1492,7 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
     }
 #endif
 
-    if (uint32_t(what) >= NUMSENSORS)
+    if (uint32_t(what) >= numSensors)
         return -EINVAL;
 
     if (ns < 0)
@@ -1708,6 +1500,7 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
 
     LOGV_IF(PROCESS_VERBOSE, "setDelay : %llu ns, (%.2f Hz)", ns, 1000000000.f / ns);
 
+    // TODO: for GED tablet
     // limit all rates to reasonable ones */
 /*
     if (ns < 10000000LL) {
@@ -1723,7 +1516,6 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
 
     switch (what) {
         case Gyro:
-        case RawGyro:
         case Accelerometer:
             for (int i = Gyro; i <= Accelerometer + mCompassSensor->isIntegrated();
                     i++) {
@@ -1737,7 +1529,6 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
         case MagneticField:
             if (mCompassSensor->isIntegrated() &&
                     (((mEnabled & (1 << Gyro)) && ns > mDelays[Gyro]) ||
-                    ((mEnabled & (1 << RawGyro)) && ns > mDelays[RawGyro]) ||
                     ((mEnabled & (1 << Accelerometer)) && ns > mDelays[Accelerometer]))) {
                  LOGV_IF(PROCESS_VERBOSE, "HAL:ignore delay set due to gyro/accel");
                  return 0;
@@ -1748,12 +1539,7 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
         case RotationVector:
         case LinearAccel:
         case Gravity:
-            if ( isLowPowerQuatEnabled() ) {
-                LOGV_IF(PROCESS_VERBOSE, "HAL:need to update delay due to LPQ");
-                break;
-            }
-
-            for (int i = 0; i < NUMSENSORS; i++) {
+            for (int i = 0; i < numSensors; i++) {
                 if (i != what && (mEnabled & (1 << i)) && ns > mDelays[i]) {
                     LOGV_IF(PROCESS_VERBOSE, "HAL:ignore delay set due to sensor %d", i);
                     return 0;
@@ -1762,6 +1548,7 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
             break;
     }
 
+    // TODO: disabled for GED tablet
     // pthread_mutex_lock(&mHALMutex);
     int res = update_delay();
     // pthread_mutex_unlock(&mHALMutex);
@@ -1775,31 +1562,33 @@ int MPLSensor::update_delay() {
     int64_t got;
 
     if (mEnabled) {
-        int64_t wanted = 1000000000;
-        int64_t wanted_3rd_party_sensor = 1000000000;
+        uint64_t wanted = -1LLU;
+        uint64_t wanted_ec = -1LLU;
 
-        // Sequence to change sensor's FIFO rate
-        // 1. enable Power state
+        // Sequence to change sensor's FIFO rate 
+        // 1. enable Power state 
         // 2. reset master enable
         // 3. Update delay
         // 4. set master enable
 
+        // TODO: unnecessary for IIO
         // ensure power on
-        onPower(1);
+        // onPower(1);
 
+        // TODO: unnecessary for IIO
         // reset master enable
-        masterEnable(0);
+        // masterEnable(0);
 
         /* search the minimum delay requested across all enabled sensors */
-        for (int i = 0; i < NUMSENSORS; i++) {
+        for (int i = 0; i < numSensors; i++) {
             if (mEnabled & (1 << i)) {
-                int64_t ns = mDelays[i];
+                uint64_t ns = mDelays[i];
                 wanted = wanted < ns ? wanted : ns;
             }
         }
 
-        // same delay for 3rd party Accel or Compass
-        wanted_3rd_party_sensor = wanted;
+	      // same delay for ext compass
+        wanted_ec = wanted;
 
         /* mpl rate in us in future maybe different for
            gyro vs compass vs accel */
@@ -1818,6 +1607,25 @@ int MPLSensor::update_delay() {
         inv_set_accel_sample_rate(mplAccelRate);
         inv_set_compass_sample_rate(mplCompassRate);
 
+// TODO: disabled for GED tablet
+#ifdef ENABLE_LP_QUAT_FEAT
+        // Set LP Quaternion sample rate if enabled
+        if (checkLPQuaternion()) {
+            // TODO: need to verify this part for LPQ
+            if (wanted < 5000000LL) {
+                enableLPQuaternion(0);
+            } else {
+                inv_set_quat_sample_rate(rateInus);
+                // set DMP output rate to FIFO 
+                write_sysfs_int(mpu.dmp_output_rate, 1000000000.f / wanted);
+
+                //DMP running rate must be @ 200Hz 
+                wanted= 5000000LL;	
+                LOGV("HAL:DMP rate= %.2f Hz Fifo Rate= %d us", 1000000000.f / wanted, rateInus);
+            }
+        }
+#endif
+
         /* TODO: Test 200Hz */
         // inv_set_gyro_sample_rate(5000);
         LOGV_IF(PROCESS_VERBOSE, "HAL:MPL gyro sample rate: %d", mplGyroRate);
@@ -1826,30 +1634,12 @@ int MPLSensor::update_delay() {
 
         int enabled_sensors = mEnabled;
         int tempFd = -1;
-        if (LA_ENABLED || GR_ENABLED || RV_ENABLED || O_ENABLED) {
-            if (isLowPowerQuatEnabled() ||
-                    (isDmpDisplayOrientationOn() && mDmpOrientationEnabled)) {
-                bool setDMPrate= 0;
-                // Set LP Quaternion sample rate if enabled
-                if (checkLPQuaternion()) {
-                    if (wanted < RATE_200HZ) {
-                        enableLPQuaternion(0);
-                    } else {
-                        inv_set_quat_sample_rate(rateInus);
-                        setDMPrate= 1;
-                    }
-                }
-
-                if (checkDMPOrientation() || setDMPrate==1) {
-                    getDmpRate(&wanted);
-                }
-            }
-
-            int64_t tempRate = wanted;
+        if(LA_ENABLED || GR_ENABLED || RV_ENABLED || O_ENABLED) {
+            uint64_t tempRate = wanted;
             LOGV_IF(EXTRA_VERBOSE, "HAL:setDelay - Fusion");
             //nsToHz
             LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %.0f > %s (%lld)",
-                    1000000000.f / tempRate, mpu.gyro_fifo_rate,
+                    1000000000.f / tempRate, mpu.gyro_fifo_rate, 
                     getTimestamp());
             tempFd = open(mpu.gyro_fifo_rate, O_RDWR);
             res = write_attribute_sensor(tempFd, 1000000000.f / tempRate);
@@ -1860,16 +1650,15 @@ int MPLSensor::update_delay() {
             //nsToHz (BMA250)
             if(USE_THIRD_PARTY_ACCEL == 1) {
                 LOGV_IF(SYSFS_VERBOSE, "echo %lld > %s (%lld)",
-                        wanted_3rd_party_sensor / 1000000L, mpu.accel_fifo_rate,
+                        wanted / 1000000L, mpu.accel_fifo_rate, 
                         getTimestamp());
                 tempFd = open(mpu.accel_fifo_rate, O_RDWR);
-                res = write_attribute_sensor(tempFd, wanted_3rd_party_sensor / 1000000L);
+                res = write_attribute_sensor(tempFd, wanted / 1000000L);
                 LOGE_IF(res < 0, "HAL:ACCEL update delay error");
             }
 
             if (!mCompassSensor->isIntegrated()) {
-                LOGV_IF(PROCESS_VERBOSE, "HAL:Ext compass rate %.2f Hz", 1000000000.f / wanted_3rd_party_sensor);
-                mCompassSensor->setDelay(ID_M, wanted_3rd_party_sensor);
+                mCompassSensor->setDelay(ID_M, wanted_ec);
                 got = mCompassSensor->getDelay(ID_M);
                 inv_set_compass_sample_rate(got / 1000);
             }
@@ -1890,14 +1679,7 @@ int MPLSensor::update_delay() {
         } else {
 
             if (GY_ENABLED) {
-                wanted = (mDelays[Gyro] <= mDelays[RawGyro]?
-                    (mEnabled & (1 << Gyro)? mDelays[Gyro]: mDelays[RawGyro]):
-                    (mEnabled & (1 << RawGyro)? mDelays[RawGyro]: mDelays[Gyro]));
-
-                if (isDmpDisplayOrientationOn() && mDmpOrientationEnabled) {
-                    getDmpRate(&wanted);
-                }
-
+                wanted = mDelays[Gyro];
                 LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %.0f > %s (%lld)",
                         1000000000.f / wanted, mpu.gyro_fifo_rate, getTimestamp());
                 tempFd = open(mpu.gyro_fifo_rate, O_RDWR);
@@ -1908,30 +1690,17 @@ int MPLSensor::update_delay() {
             if (A_ENABLED) { /* else if because there is only 1 fifo rate for MPUxxxx */
                 if (GY_ENABLED && mDelays[Gyro] < mDelays[Accelerometer]) {
                     wanted = mDelays[Gyro];
-                }
-                else if (GY_ENABLED && mDelays[RawGyro] < mDelays[Accelerometer]) {
-                    wanted = mDelays[RawGyro];
-
                 } else {
                     wanted = mDelays[Accelerometer];
                 }
-
-                if (isDmpDisplayOrientationOn() && mDmpOrientationEnabled) {
-                    getDmpRate(&wanted);
-                }
-
                 /* TODO: use function pointers to calculate delay value specific to vendor */
                 LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %.0f > %s (%lld)",
                         1000000000.f / wanted, mpu.accel_fifo_rate, getTimestamp());
                 tempFd = open(mpu.accel_fifo_rate, O_RDWR);
-                if(USE_THIRD_PARTY_ACCEL == 1) {
-                    //BMA250 in ms
-                    res = write_attribute_sensor(tempFd, wanted / 1000000L);
-                }
-                else {
-                    //MPUxxxx in hz
-                    res = write_attribute_sensor(tempFd, 1000000000.f/wanted);
-                }
+                //BMA250 in ms
+                //res = write_attribute_sensor(tempFd, wanted / 1000000L);
+                //MPU6050 in hz
+                res = write_attribute_sensor(tempFd, 1000000000.f/wanted);
                 LOGE_IF(res < 0, "HAL:ACCEL update delay error");
             }
 
@@ -1942,20 +1711,12 @@ int MPLSensor::update_delay() {
                 } else {
                     if (GY_ENABLED && mDelays[Gyro] < mDelays[MagneticField]) {
                         wanted = mDelays[Gyro];
-                    }
-                    else if (GY_ENABLED && mDelays[RawGyro] < mDelays[MagneticField]) {
-                        wanted = mDelays[RawGyro];
-                    } else if (A_ENABLED && mDelays[Accelerometer] < mDelays[MagneticField]) {
+                    } else if (GY_ENABLED && mDelays[Accelerometer] < mDelays[MagneticField]) {
                         wanted = mDelays[Accelerometer];
                     } else {
                         wanted = mDelays[MagneticField];
                     }
-
-                    if (isDmpDisplayOrientationOn() && mDmpOrientationEnabled) {
-                        getDmpRate(&wanted);
-                    }
                 }
-
                 mCompassSensor->setDelay(ID_M, wanted);
                 got = mCompassSensor->getDelay(ID_M);
                 inv_set_compass_sample_rate(got / 1000);
@@ -1963,27 +1724,44 @@ int MPLSensor::update_delay() {
 
         }
 
+        /*
+            if sensor & THREE_AXIS_GYRO
+                enable = 1
+            if sensor & THREE_AXIS_ACCEL
+                enable = 1
+            if compass_on_secondary
+                if sensor & THREE_AXIS_COMPASS
+                    enable = 1
+            else
+                enable = 0
+        */
         unsigned long sensors = mLocalSensorMask & mMasterSensorMask;
-        if (sensors &
-            (INV_THREE_AXIS_GYRO
-                | INV_THREE_AXIS_ACCEL
+        if (sensors & 
+            (INV_THREE_AXIS_GYRO 
+                | INV_THREE_AXIS_ACCEL 
                 | (INV_THREE_AXIS_COMPASS * mCompassSensor->isIntegrated()))) {
+// TODO: unnecessary for IIO
+#if 0
             res = masterEnable(1);
             if(res < 0) {
                 return res;
             }
+#endif
         } else { // all sensors idle -> reduce power
+// TODO: unnecessary for IIO
+#if 0
             res = onPower(0);
             if(res < 0) {
                 return res;
             }
+#endif
         }
     }
 
     return res;
 }
 
-/* For Third Party Accel Input Subsystem Drivers only */
+/* use for third party accel */
 int MPLSensor::readAccelEvents(sensors_event_t* data, int count)
 {
     VHANDLER_LOG;
@@ -2026,12 +1804,15 @@ int MPLSensor::readAccelEvents(sensors_event_t* data, int count)
         mAccelInputReader.next();
     }
 
+    LOGV_IF(ENG_VERBOSE, "HAL:readAccelEvents - events read=%d", numEventReceived);
+
     return numEventReceived;
 }
 
-/**
+/** 
  *  Should be called after reading at least one of gyro
- *  compass or accel data. (Also okay for handling all of them).
+ *  compass or accel data. You should only read 1 sample of
+ *  data and call this.
  *  @returns 0, if successful, error number if not.
  */
 int MPLSensor::executeOnData(sensors_event_t* data, int count)
@@ -2060,7 +1841,7 @@ int MPLSensor::executeOnData(sensors_event_t* data, int count)
     }
 
     // load up virtual sensors
-    for (int i = 0; i < NUMSENSORS; i++) {
+    for (int i = 0; i < numSensors; i++) {
         int update;
         if (mEnabled & (1 << i)) {
             update = CALL_MEMBER_FN(this, mHandlers[i])(mPendingEvents + i);
@@ -2077,11 +1858,10 @@ int MPLSensor::executeOnData(sensors_event_t* data, int count)
     return numEventReceived;
 }
 
-// collect data for MPL (but NOT sensor service currently), from driver layer
 int MPLSensor::readEvents(sensors_event_t *data, int count) {
 
 
-    int lp_quaternion_on = 0, nbyte;
+    int lp_quaternion_on, nbyte;
     int i, nb, mask = 0, numEventReceived = 0,
         sensors = ((mLocalSensorMask & INV_THREE_AXIS_GYRO)? 1: 0) +
             ((mLocalSensorMask & INV_THREE_AXIS_ACCEL)? 1: 0) +
@@ -2090,23 +1870,24 @@ int MPLSensor::readEvents(sensors_event_t *data, int count) {
 
     nbyte= (8 * sensors + 8) * 1;
 
-    if (isLowPowerQuatEnabled()) {
-        lp_quaternion_on = checkLPQuaternion();
-        if (lp_quaternion_on == 1) {
-            nbyte += sizeof(mCachedQuaternionData);		//currently 16 bytes for Q data
-        }
+// TODO: disabled for GED tablet
+#ifdef ENABLE_LP_QUAT_FEAT
+    lp_quaternion_on = checkLPQuaternion();
+    if (lp_quaternion_on == 1) {
+        nbyte += sizeof(mCachedQuaternionData);		//currently 16 bytes for Q data
     }
+#endif
 
+    // TODO: disabled for GED tablet
     // pthread_mutex_lock(&mMplMutex);
     // pthread_mutex_lock(&mHALMutex);
 
-    ssize_t rsize = read(iio_fd, rdata, nbyte);
+    size_t rsize = read(iio_fd, rdata, nbyte);
     if (sensors == 0) {
         // read(iio_fd, rdata, nbyte);
-        read(iio_fd, rdata, IIO_BUFFER_LENGTH);
+        read(iio_fd, rdata, (16 + 8 * 3 + 8) * IIO_BUFFER_LENGTH);
     }
-
-#ifdef TESTING
+/*
     LOGI("get one sample of IIO data with size: %d", rsize);
     LOGI("sensors: %d", sensors);
 
@@ -2126,20 +1907,27 @@ int MPLSensor::readEvents(sensors_event_t *data, int count) {
             ((mLocalSensorMask & INV_THREE_AXIS_ACCEL)? 6: 0))),
         *((short *) (rdata + 4) + ((mLocalSensorMask & INV_THREE_AXIS_GYRO)? 6: 0) +
             ((mLocalSensorMask & INV_THREE_AXIS_ACCEL)? 6: 0)));
-#endif
+*/
 
+    // TODO: need to verify this for LPQ
     if (rsize < (nbyte - 8)) {
         LOGE("HAL:ERR Full data packet was not read");
         // return -1;
     }
 
-    if (isLowPowerQuatEnabled() && lp_quaternion_on == 1) {
-
+// TODO: disabled for GED tablet
+#ifdef ENABLE_LP_QUAT_FEAT
+    if (lp_quaternion_on == 1) {
         for (i=0; i< 4; i++) {
             mCachedQuaternionData[i]= *(long*)rdata;
             rdata += sizeof(long);
         }
     }
+/*
+    LOGV("HAL:rdata= %x sensors= %d  lp_q_on= %d nbyte= %d rsize= %d",
+        rdata, sensors, lp_quaternion_on, nbyte, rsize);  //tbd
+*/
+#endif
 
     for (i = 0; i < 3; i++) {
         if (mLocalSensorMask & INV_THREE_AXIS_GYRO) {
@@ -2154,11 +1942,11 @@ int MPLSensor::readEvents(sensors_event_t *data, int count) {
         }
     }
 
-    mask |= (((mLocalSensorMask & INV_THREE_AXIS_GYRO)? 1 << Gyro: 0) +
-        ((mLocalSensorMask & INV_THREE_AXIS_ACCEL)? 1 << Accelerometer: 0));
+    mask |= (((mLocalSensorMask & INV_THREE_AXIS_GYRO)? 1: 0) +
+        ((mLocalSensorMask & INV_THREE_AXIS_ACCEL)? 2: 0));
     if ((mLocalSensorMask & INV_THREE_AXIS_COMPASS) && mCompassSensor->isIntegrated() &&
             (mCachedCompassData[0] != 0 || mCachedCompassData[1] != 0 || mCachedCompassData[0] != 0)) {
-        mask |= 1 << MagneticField;
+        mask |= 4;
     }
 
     mSensorTimestamp = *((long long *) (rdata + 8 * sensors));
@@ -2166,61 +1954,58 @@ int MPLSensor::readEvents(sensors_event_t *data, int count) {
         mCompassTimestamp = mSensorTimestamp;
     }
 
-    if (mask & (1 << Gyro)) {
-        // send down temperature every 0.5 seconds
-        // with timestamp measured in "driver" layer
-        if(mSensorTimestamp - mTempCurrentTime >= 500000000LL) {
-            mTempCurrentTime = mSensorTimestamp;
-            long long temperature[2];
-            if(inv_read_temperature(temperature) == 0) {
-                LOGV_IF(INPUT_DATA,
-                        "HAL:inv_read_temperature = %lld, timestamp= %lld",
-                        temperature[0], temperature[1]);
-                inv_build_temp(temperature[0], temperature[1]);
-            }
-#ifdef TESTING
-            long bias[3], temp, temp_slope[3];
-            inv_get_gyro_bias(bias, &temp);
-            inv_get_gyro_ts(temp_slope);
-
-            LOGI("T: %.3f "
-                 "GB: %+13f %+13f %+13f "
-                 "TS: %+13f %+13f %+13f "
-                 "\n",
-                 (float)temperature[0] / 65536.f,
-                 (float)bias[0] / 65536.f / 16.384f,
-                 (float)bias[1] / 65536.f / 16.384f,
-                 (float)bias[2] / 65536.f / 16.384f,
-                 temp_slope[0] / 65536.f,
-                 temp_slope[1] / 65536.f,
-                 temp_slope[2] / 65536.f);
-#endif
+    // send down temperature every 0.5 seconds
+    if(mSensorTimestamp - mTempCurrentTime >= 500000000LL) {
+        mTempCurrentTime = mSensorTimestamp;
+        long long temperature[2];
+        if(inv_read_temperature(temperature) == 0) {
+            LOGV_IF(INPUT_DATA,
+                    "HAL:inv_read_temperature = %lld, timestamp= %lld",
+                    temperature[0], temperature[1]);
+            inv_build_temp(temperature[0], temperature[1]);
         }
+#ifdef TESTING
+        long bias[3], temp, temp_slope[3];
+        inv_get_gyro_bias(bias, &temp);
+        inv_get_gyro_ts(temp_slope);
+        
+        LOGI("T: %.3f "
+             "GB: %+13f %+13f %+13f "
+             "TS: %+13f %+13f %+13f "
+             "\n", 
+             (float)temperature[0] / 65536.f,
+             (float)bias[0] / 65536.f / 16.384f,
+             (float)bias[1] / 65536.f / 16.384f,
+             (float)bias[2] / 65536.f / 16.384f,
+             temp_slope[0] / 65536.f,
+             temp_slope[1] / 65536.f,
+             temp_slope[2] / 65536.f);
+#endif
+    }
 
+    if (mask & 1) {
         mPendingMask |= 1 << Gyro;
-        mPendingMask |= 1 << RawGyro;
-
         if (mLocalSensorMask & INV_THREE_AXIS_GYRO) {
             inv_build_gyro(mCachedGyroData, mSensorTimestamp);
             LOGV_IF(INPUT_DATA,
                     "HAL:inv_build_gyro: %+8d %+8d %+8d - %lld",
-                    mCachedGyroData[0], mCachedGyroData[1],
+                    mCachedGyroData[0], mCachedGyroData[1], 
                     mCachedGyroData[2], mSensorTimestamp);
         }
     }
 
-    if (mask & (1 << Accelerometer)) {
+    if (mask & 2) {
         mPendingMask |= 1 << Accelerometer;
         if (mLocalSensorMask & INV_THREE_AXIS_ACCEL) {
             inv_build_accel(mCachedAccelData, 0, mSensorTimestamp);
              LOGV_IF(INPUT_DATA,
                     "HAL:inv_build_accel: %+8ld %+8ld %+8ld - %lld",
-                    mCachedAccelData[0], mCachedAccelData[1],
+                    mCachedAccelData[0], mCachedAccelData[1], 
                     mCachedAccelData[2], mSensorTimestamp);
         }
     }
 
-    if ((mask & (1 << MagneticField)) && mCompassSensor->isIntegrated()) {
+    if ((mask & 4) && mCompassSensor->isIntegrated()) {
         int status = 0;
         if (mCompassSensor->providesCalibration()) {
             status = mCompassSensor->getAccuracy();
@@ -2229,19 +2014,21 @@ int MPLSensor::readEvents(sensors_event_t *data, int count) {
         if (mLocalSensorMask & INV_THREE_AXIS_COMPASS) {
             inv_build_compass(mCachedCompassData, status,
                               mCompassTimestamp);
-            LOGV_IF(INPUT_DATA, "HAL:inv_build_compass: %+8ld %+8ld %+8ld - %lld",
-                    mCachedCompassData[0], mCachedCompassData[1],
+            LOGV_IF(INPUT_DATA, "HAL:inv_build_compass: %+8ld %+8ld %+8ld - %lld", 
+                    mCachedCompassData[0], mCachedCompassData[1], 
                     mCachedCompassData[2], mCompassTimestamp);
         }
     }
 
-    if (isLowPowerQuatEnabled() && lp_quaternion_on == 1) {
-
+// TODO: disabled for GED tablet
+#ifdef ENABLE_LP_QUAT_FEAT
+    if (lp_quaternion_on == 1) {
         inv_build_quat(mCachedQuaternionData, 32 /*default 32 for now (16/32bits)*/, mSensorTimestamp);
-        LOGV_IF(INPUT_DATA, "HAL:inv_build_quat: %+8ld %+8ld %+8ld %+8ld - %lld",
-                    mCachedQuaternionData[0], mCachedQuaternionData[1],
+        LOGV_IF(INPUT_DATA, "HAL:inv_build_quat: %+8ld %+8ld %+8ld %+8ld - %lld - %d",
+                    mCachedQuaternionData[0], mCachedQuaternionData[1], 
                     mCachedQuaternionData[2], mCachedQuaternionData[3], mSensorTimestamp);
     }
+#endif
 
     // pthread_mutex_unlock(&mMplMutex);
     // pthread_mutex_unlock(&mHALMutex);
@@ -2254,20 +2041,19 @@ int MPLSensor::readCompassEvents(sensors_event_t *data, int count)
 {
     VHANDLER_LOG;
 
+    if (count < 1)
+        return -EINVAL;
+
     int numEventReceived = 0;
     int done = 0;
     int nb;
 
+    // TODO: disabled for GED tablet
+    // TODO: for AMI306
     // pthread_mutex_lock(&mMplMutex);
     // pthread_mutex_lock(&mHALMutex);
 
     done = mCompassSensor->readSample(mCachedCompassData, &mCompassTimestamp);
-#ifdef COMPASS_YAS53x
-    if (mCompassSensor->checkCoilsReset() == 1) {
-       //Reset relevant compass settings
-       resetCompass();
-    }
-#endif
     if (done > 0) {
         int status = 0;
         if (mCompassSensor->providesCalibration()) {
@@ -2277,8 +2063,8 @@ int MPLSensor::readCompassEvents(sensors_event_t *data, int count)
         if (mLocalSensorMask & INV_THREE_AXIS_COMPASS) {
             inv_build_compass(mCachedCompassData, status,
                               mCompassTimestamp);
-            LOGV_IF(INPUT_DATA, "HAL:inv_build_compass: %+8ld %+8ld %+8ld - %lld",
-                    mCachedCompassData[0], mCachedCompassData[1],
+            LOGV_IF(INPUT_DATA, "HAL:inv_build_compass: %+8ld %+8ld %+8ld - %lld", 
+                    mCachedCompassData[0], mCachedCompassData[1], 
                     mCachedCompassData[2], mCompassTimestamp);
         }
     }
@@ -2288,27 +2074,6 @@ int MPLSensor::readCompassEvents(sensors_event_t *data, int count)
 
     return numEventReceived;
 }
-
-#ifdef COMPASS_YAS53x
-int MPLSensor::resetCompass()
-{
-    VFUNC_LOG;
-
-    //Reset compass cal if enabled
-    if (mFeatureActiveMask & INV_COMPASS_CAL) {
-       LOGV_IF(EXTRA_VERBOSE, "HAL:Reset compass cal");
-       inv_init_vector_compass_cal();
-    }
-
-    //Reset compass fit if enabled
-    if (mFeatureActiveMask & INV_COMPASS_FIT) {
-       LOGV_IF(EXTRA_VERBOSE, "HAL:Reset compass fit");
-       inv_init_compass_fit();
-    }
-
-    return 0;
-}
-#endif
 
 int MPLSensor::getFd() const
 {
@@ -2330,206 +2095,6 @@ int MPLSensor::getCompassFd() const
     int fd = mCompassSensor->getFd();
     LOGV_IF(EXTRA_VERBOSE, "MPLSensor::getCompassFd returning %d", fd);
     return fd;
-}
-
-int MPLSensor::turnOffAccelFifo() {
-        int i, res, tempFd;
-        char *accel_fifo_enable[3] = {mpu.accel_x_fifo_enable,
-            mpu.accel_y_fifo_enable, mpu.accel_z_fifo_enable};
-
-    for (i = 0; i < 3; i++) {
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-            0, accel_fifo_enable[i], getTimestamp());
-        tempFd = open(accel_fifo_enable[i], O_RDWR);
-        res = errno;
-        if (tempFd > 0) {
-            res = enable_sysfs_sensor(tempFd, 0);
-            if (res < 0) {
-                return res;
-            }
-        } else {
-            LOGE("HAL:open of %s failed with '%s' (%d)",
-                accel_fifo_enable[i], strerror(res), res);
-            return res;
-        }
-    }
-
-    return res;
-}
-
-int MPLSensor::enableDmpOrientation(int en)
-{
-    VFUNC_LOG;
-    int res = 0;
-    int enabled_sensors = mEnabled;
-
-    if ( isMpu3050() )
-        return res;
-
-    // on power if not already On
-    res = onPower(1);
-    // reset master enable
-    res = masterEnable(0);
-
-    if (en == 1) {
-        //Enable DMP orientation
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                en, mpu.display_orientation_on, getTimestamp());
-        if (write_sysfs_int(mpu.display_orientation_on, en) < 0) {
-            LOGE("HAL:ERR can't enable Android orientation");
-            res = -1;	// indicate an err
-        }
-
-        // open DMP Orient Fd
-        res = openDmpOrientFd();
-
-        // enable DMP
-        res = onDMP(1);
-
-        // default DMP output rate to FIFO
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                5, mpu.dmp_output_rate, getTimestamp());
-        if (write_sysfs_int(mpu.dmp_output_rate, 5) < 0) {
-            LOGE("HAL:ERR can't default DMP output rate");
-        }
-
-        // set DMP rate to 200Hz
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                200, mpu.accel_fifo_rate, getTimestamp());
-        if (write_sysfs_int(mpu.accel_fifo_rate, 200) < 0) {
-            res = -1;
-            LOGE("HAL:ERR can't set DMP rate to 200Hz");
-        }
-
-        // enable accel engine
-        res = enableAccel(1);
-
-        // disable accel FIFO
-        if (!A_ENABLED) {
-            res = turnOffAccelFifo();
-        }
-
-        mFeatureActiveMask |= INV_DMP_DISPL_ORIENTATION;
-    } else {
-        // disable DMP
-        res = onDMP(0);
-        // disable accel engine
-        if (!A_ENABLED) {
-            res = enableAccel(0);
-        }
-    }
-
-    res = masterEnable(1);
-    return res;
-}
-
-int MPLSensor::openDmpOrientFd()
-{
-    VFUNC_LOG;
-
-    if (!isDmpDisplayOrientationOn() || dmp_orient_fd >= 0) {
-        LOGV_IF(PROCESS_VERBOSE, "HAL:DMP display orientation disabled or file desc opened");
-        return -1;
-    }
-
-    dmp_orient_fd = open(mpu.event_display_orientation, O_RDONLY| O_NONBLOCK);
-    if (dmp_orient_fd < 0) {
-        LOGE("HAL:ERR couldn't open dmpOrient node");
-        return -1;
-    } else {
-        LOGV_IF(PROCESS_VERBOSE, "HAL:dmp_orient_fd opened : %d", dmp_orient_fd);
-        return 0;
-    }
-}
-
-int MPLSensor::closeDmpOrientFd()
-{
-    VFUNC_LOG;
-    if (dmp_orient_fd >= 0)
-        close(dmp_orient_fd);
-    return 0;
-}
-
-int MPLSensor::dmpOrientHandler(int orient)
-{
-    VFUNC_LOG;
-
-    LOGV_IF(PROCESS_VERBOSE, "HAL:orient %x", orient);
-    return 0;
-}
-
-int MPLSensor::readDmpOrientEvents(sensors_event_t* data, int count) {
-    VFUNC_LOG;
-
-    char dummy[4];
-    int screen_orientation = 0;
-    FILE *fp;
-
-    fp = fopen(mpu.event_display_orientation, "r");
-    if (fp == NULL) {
-        LOGE("HAL:cannot open event_display_orientation");
-        return 0;
-    }
-    fscanf(fp, "%d\n", &screen_orientation);
-    fclose(fp);
-
-    int numEventReceived = 0;
-
-    if (mDmpOrientationEnabled && count > 0) {
-        sensors_event_t temp;
-
-        temp.version = sizeof(sensors_event_t);
-        temp.sensor = ID_SO;
-#ifdef ENABLE_DMP_SCREEN_AUTO_ROTATION
-        temp.type = SENSOR_TYPE_SCREEN_ORIENTATION;
-        temp.screen_orientation = screen_orientation;
-#endif
-        struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
-        temp.timestamp = (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
-
-        *data++ = temp;
-        count--;
-        numEventReceived++;
-    }
-
-    // read dummy data per driver's request
-    dmpOrientHandler(screen_orientation);
-    read(dmp_orient_fd, dummy, 4);
-
-    return numEventReceived;
-}
-
-int MPLSensor::getDmpOrientFd()
-{
-    VFUNC_LOG;
-
-    LOGV_IF(EXTRA_VERBOSE, "MPLSensor::getDmpOrientFd returning %d", dmp_orient_fd);
-    return dmp_orient_fd;
-
-}
-
-int MPLSensor::checkDMPOrientation()
-{
-    VFUNC_LOG;
-    return ((mFeatureActiveMask & INV_DMP_DISPL_ORIENTATION) ? 1 : 0);
-}
-
-int MPLSensor::getDmpRate(int64_t *wanted)
-{
-    if (checkDMPOrientation() || checkLPQuaternion()) {
-        // set DMP output rate to FIFO
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
-                int(1000000000.f / *wanted), mpu.dmp_output_rate,
-                getTimestamp());
-        write_sysfs_int(mpu.dmp_output_rate, 1000000000.f / *wanted);
-        LOGV_IF(PROCESS_VERBOSE, "HAL:DMP FIFO rate %.2f Hz", 1000000000.f / *wanted);
-
-        //DMP running rate must be @ 200Hz
-        *wanted= RATE_200HZ;
-        LOGV_IF(PROCESS_VERBOSE, "HAL:DMP rate= %.2f Hz", 1000000000.f / *wanted);
-    }
-    return 0;
 }
 
 int MPLSensor::getPollTime()
@@ -2629,7 +2194,7 @@ int MPLSensor::inv_read_temperature(long long *data)
         return -1;
     }
 
-    LOGV_IF(ENG_VERBOSE,
+    LOGV_IF(ENG_VERBOSE, 
             "HAL:temperature raw = %ld, timestamp = %lld, count = %d",
             raw, timestamp, count);
     data[0] = raw;
@@ -2687,39 +2252,41 @@ int MPLSensor::inv_read_sensor_bias(int fd, long *data)
     count = sscanf(buf, "%[^','],%[^','],%[^',']", x, y, z);
     if(count) {
         /* scale appropriately for MPL */
-        LOGV_IF(ENG_VERBOSE,
-                "HAL:pre-scaled bias: X:Y:Z (%ld, %ld, %ld)",
+        LOGV_IF(ENG_VERBOSE, 
+                "HAL:pre-scaled bias: X:Y:Z (%ld, %ld, %ld)", 
                 atol(x), atol(y), atol(z));
 
         data[0] = (long)(atol(x) / 10000 * (1L << 16));
         data[1] = (long)(atol(y) / 10000 * (1L << 16));
         data[2] = (long)(atol(z) / 10000 * (1L << 16));
 
-        LOGV_IF(ENG_VERBOSE,
-                "HAL:scaled bias: X:Y:Z (%ld, %ld, %ld)",
+        LOGV_IF(ENG_VERBOSE, 
+                "HAL:scaled bias: X:Y:Z (%ld, %ld, %ld)", 
                 data[0], data[1], data[2]);
     }
     return 0;
 }
+
 
 /** fill in the sensor list based on which sensors are configured.
  *  return the number of configured sensors.
  *  parameter list must point to a memory region of at least 7*sizeof(sensor_t)
  *  parameter len gives the length of the buffer pointed to by list
  */
+
 int MPLSensor::populateSensorList(struct sensor_t *list, int len)
 {
     VFUNC_LOG;
 
     int numsensors;
 
-    if(len < (int)((sizeof(sSensorList) / sizeof(sensor_t)) * sizeof(sensor_t))) {
+    if(len < (int)(7 * sizeof(sensor_t))) {
         LOGE("HAL:sensor list too small, not populating.");
-        return -(sizeof(sSensorList) / sizeof(sensor_t));
+        return 0;
     }
 
     /* fill in the base values */
-    memcpy(list, sSensorList, sizeof (struct sensor_t) * (sizeof(sSensorList) / sizeof(sensor_t)));
+    memcpy(list, sSensorList, sizeof (struct sensor_t) * 7);
 
     /* first add gyro, accel and compass to the list */
 
@@ -2734,7 +2301,7 @@ int MPLSensor::populateSensorList(struct sensor_t *list, int len)
     mCompassSensor->fillList(&list[MagneticField]);
 
     if(1) {
-        numsensors = (sizeof(sSensorList) / sizeof(sensor_t));
+        numsensors = 7;
         /* all sensors will be added to the list
            fill in orientation values */
         fillOrientation(list);
@@ -2768,13 +2335,10 @@ void MPLSensor::fillAccel(const char* accel, struct sensor_t *list)
             list[Accelerometer].maxRange = ACCEL_MPU6050_RANGE;
             list[Accelerometer].resolution = ACCEL_MPU6050_RESOLUTION;
             list[Accelerometer].power = ACCEL_MPU6050_POWER;
-            list[Accelerometer].minDelay = ACCEL_MPU6050_MINDELAY;
-            return;
-        } else if (accel != NULL && strcmp(accel, "MPU6500") == 0) {
-            list[Accelerometer].maxRange = ACCEL_MPU6500_RANGE;
-            list[Accelerometer].resolution = ACCEL_MPU6500_RESOLUTION;
-            list[Accelerometer].power = ACCEL_MPU6500_POWER;
-            list[Accelerometer].minDelay = ACCEL_MPU6500_MINDELAY;
+
+            // TODO: for GED tablet
+            // list[Accelerometer].minDelay = ACCEL_MPU6050_MINDELAY;
+            list[Accelerometer].minDelay = 5000;
 
             return;
         } else if (accel != NULL && strcmp(accel, "MPU9150") == 0) {
@@ -2783,7 +2347,7 @@ void MPLSensor::fillAccel(const char* accel, struct sensor_t *list)
             list[Accelerometer].power = ACCEL_MPU9150_POWER;
             list[Accelerometer].minDelay = ACCEL_MPU9150_MINDELAY;
             return;
-        } else if (accel != NULL && strcmp(accel, "MPU3050") == 0) {
+        } else if (accel != NULL && strcmp(accel, "MPU3050") == 0) { 
             list[Accelerometer].maxRange = ACCEL_BMA250_RANGE;
             list[Accelerometer].resolution = ACCEL_BMA250_RESOLUTION;
             list[Accelerometer].power = ACCEL_BMA250_POWER;
@@ -2814,12 +2378,10 @@ void MPLSensor::fillGyro(const char* gyro, struct sensor_t *list)
         list[Gyro].maxRange = GYRO_MPU6050_RANGE;
         list[Gyro].resolution = GYRO_MPU6050_RESOLUTION;
         list[Gyro].power = GYRO_MPU6050_POWER;
-        list[Gyro].minDelay = GYRO_MPU6050_MINDELAY;
-    } else if( gyro != NULL && strcmp(gyro, "MPU6500") == 0) {
-        list[Gyro].maxRange = GYRO_MPU6500_RANGE;
-        list[Gyro].resolution = GYRO_MPU6500_RESOLUTION;
-        list[Gyro].power = GYRO_MPU6500_POWER;
-        list[Gyro].minDelay = GYRO_MPU6500_MINDELAY;
+
+        // TODO: for GED tablet
+        // list[Gyro].minDelay = GYRO_MPU6050_MINDELAY;
+        list[Gyro].minDelay = 5000;
     } else if( gyro != NULL && strcmp(gyro, "MPU9150") == 0) {
         list[Gyro].maxRange = GYRO_MPU9150_RANGE;
         list[Gyro].resolution = GYRO_MPU9150_RESOLUTION;
@@ -2833,12 +2395,6 @@ void MPLSensor::fillGyro(const char* gyro, struct sensor_t *list)
         list[Gyro].power = GYRO_MPU3050_POWER;
         list[Gyro].minDelay = GYRO_MPU3050_MINDELAY;
     }
-
-    list[RawGyro].maxRange = list[Gyro].maxRange;
-    list[RawGyro].resolution = list[Gyro].resolution;
-    list[RawGyro].power = list[Gyro].power;
-    list[RawGyro].minDelay = list[Gyro].minDelay;
-
     return;
 }
 
@@ -2848,11 +2404,14 @@ void MPLSensor::fillRV(struct sensor_t *list)
     VFUNC_LOG;
 
     /* compute power on the fly */
-    list[RotationVector].power = list[Gyro].power +
+    list[RotationVector].power = list[Gyro].power + 
                                  list[Accelerometer].power +
                                  list[MagneticField].power;
     list[RotationVector].resolution = .00001;
     list[RotationVector].maxRange = 1.0;
+
+    // TODO: for GED tablet
+    // list[RotationVector].minDelay = 10000;
     list[RotationVector].minDelay = 5000;
 
     return;
@@ -2867,6 +2426,9 @@ void MPLSensor::fillOrientation(struct sensor_t *list)
                               list[MagneticField].power;
     list[Orientation].resolution = .00001;
     list[Orientation].maxRange = 360.0;
+
+    // TODO: for GED tablet
+    // list[Orientation].minDelay = 10000;
     list[Orientation].minDelay = 5000;
 
     return;
@@ -2881,6 +2443,9 @@ void MPLSensor::fillGravity( struct sensor_t *list)
                           list[MagneticField].power;
     list[Gravity].resolution = .00001;
     list[Gravity].maxRange = 9.81;
+
+    // TODO: for GED tablet
+    // list[Gravity].minDelay = 10000;
     list[Gravity].minDelay = 5000;
 
     return;
@@ -2895,6 +2460,9 @@ void MPLSensor::fillLinearAccel(struct sensor_t *list)
                           list[MagneticField].power;
     list[LinearAccel].resolution = list[Accelerometer].resolution;
     list[LinearAccel].maxRange = list[Accelerometer].maxRange;
+
+    // TODO: for GED tablet
+    // list[LinearAccel].minDelay = 10000;
     list[LinearAccel].minDelay = 5000;
 
     return;
@@ -2910,7 +2478,13 @@ int MPLSensor::inv_init_sysfs_attributes(void)
     char **dptr;
     int num;
 
-    sysfs_names_ptr =
+    // get proper (in absolute/relative) IIO path & build MPU's sysfs paths
+    // inv_get_sysfs_abs_path(sysfs_path);
+    if(INV_SUCCESS != inv_get_sysfs_path(sysfs_path)) {
+        ALOGE("MPLSensor failed get sysfs path");
+        return -1;
+    }
+    sysfs_names_ptr = 
             (char*)malloc(sizeof(char[MAX_SYSFS_ATTRB][MAX_SYSFS_NAME_LEN]));
     sptr = sysfs_names_ptr;
     if (sptr != NULL) {
@@ -2924,9 +2498,6 @@ int MPLSensor::inv_init_sysfs_attributes(void)
         return -1;
     }
 
-    // get proper (in absolute/relative) IIO path & build MPU's sysfs paths
-    // inv_get_sysfs_abs_path(sysfs_path);
-    inv_get_sysfs_path(sysfs_path);
     inv_get_iio_trigger_path(iio_trigger_path);
 
     sprintf(mpu.key, "%s%s", sysfs_path, "/key");
@@ -2941,7 +2512,6 @@ int MPLSensor::inv_init_sysfs_attributes(void)
     sprintf(mpu.firmware_loaded,"%s%s", sysfs_path, "/firmware_loaded");
     sprintf(mpu.dmp_on,"%s%s", sysfs_path, "/dmp_on");
     sprintf(mpu.dmp_int_on,"%s%s", sysfs_path, "/dmp_int_on");
-    sprintf(mpu.dmp_event_int_on,"%s%s", sysfs_path, "/dmp_event_int_on");
     sprintf(mpu.dmp_output_rate,"%s%s", sysfs_path, "/dmp_output_rate");
     sprintf(mpu.tap_on, "%s%s", sysfs_path, "/tap_on");
 
@@ -2956,19 +2526,26 @@ int MPLSensor::inv_init_sysfs_attributes(void)
     sprintf(mpu.gyro_y_fifo_enable, "%s%s", sysfs_path, "/scan_elements/in_anglvel_y_en");
     sprintf(mpu.gyro_z_fifo_enable, "%s%s", sysfs_path, "/scan_elements/in_anglvel_z_en");
 
+#ifdef THIRD_PARTY_ACCEL    //BMA250
+    /* same as 'mpu.accel_enable' */
+    sprintf(mpu.accel_enable, "%s%s", sysfs_path, "/enable");
+    sprintf(mpu.accel_fifo_rate, "%s%s", sysfs_path, "/fifo_rate");
+    sprintf(mpu.accel_fsr, "%s%s", sysfs_path, "/NA");
+    sprintf(mpu.accel_bias, "%s%s", sysfs_path, "/NA");
+    sprintf(mpu.accel_orient, "%s%s", sysfs_path, "/NA");   
+#else
     sprintf(mpu.accel_enable, "%s%s", sysfs_path, "/accl_enable");
     sprintf(mpu.accel_fifo_rate, "%s%s", sysfs_path, "/sampling_frequency");
-    sprintf(mpu.accel_orient, "%s%s", sysfs_path, "/accl_matrix");
-
-#ifndef THIRD_PARTY_ACCEL //MPUxxxx
     sprintf(mpu.accel_fsr, "%s%s", sysfs_path, "/in_accel_scale");
-    // TODO: for bias settings
-    sprintf(mpu.accel_bias, "%s%s", sysfs_path, "/accl_bias");
-#endif
-
     sprintf(mpu.accel_x_fifo_enable, "%s%s", sysfs_path, "/scan_elements/in_accel_x_en");
     sprintf(mpu.accel_y_fifo_enable, "%s%s", sysfs_path, "/scan_elements/in_accel_y_en");
     sprintf(mpu.accel_z_fifo_enable, "%s%s", sysfs_path, "/scan_elements/in_accel_z_en");
+
+    // TODO: for bias settings
+    sprintf(mpu.accel_bias, "%s%s", sysfs_path, "/accl_bias");
+
+    sprintf(mpu.accel_orient, "%s%s", sysfs_path, "/accl_matrix");
+#endif
 
     sprintf(mpu.quaternion_on, "%s%s", sysfs_path, "/quaternion_on");
     sprintf(mpu.in_quat_r_en, "%s%s", sysfs_path, "/scan_elements/in_quaternion_r_en");
@@ -2976,38 +2553,12 @@ int MPLSensor::inv_init_sysfs_attributes(void)
     sprintf(mpu.in_quat_y_en, "%s%s", sysfs_path, "/scan_elements/in_quaternion_y_en");
     sprintf(mpu.in_quat_z_en, "%s%s", sysfs_path, "/scan_elements/in_quaternion_z_en");
 
-    sprintf(mpu.display_orientation_on, "%s%s", sysfs_path, "/display_orientation_on");
-    sprintf(mpu.event_display_orientation, "%s%s", sysfs_path, "/event_display_orientation");
-
-    return 0;
-}
-
-bool MPLSensor::isMpu3050()
-{
-    if (!strcmp(chip_ID, "mpu3050") || !strcmp(chip_ID, "MPU3050"))
-        return true;
-    else
-        return false;
-}
-
-int MPLSensor::isLowPowerQuatEnabled()
-{
-#ifdef ENABLE_LP_QUAT_FEAT
-    if (isMpu3050())
-        return 0;
-    return 1;
-#else
-    return 0;
+#if 0
+    // test print sysfs paths
+    dptr = (char**)&mpu;
+    for (i = 0; i < MAX_SYSFS_ATTRB; i++) {
+        LOGE("HAL:sysfs path: %s", *dptr++);
+    }
 #endif
-}
-
-int MPLSensor::isDmpDisplayOrientationOn()
-{
-#ifdef ENABLE_DMP_DISPL_ORIENT_FEAT
-    if (isMpu3050())
-        return 0;
-    return 1;
-#else
     return 0;
-#endif
 }

@@ -28,14 +28,12 @@ extern "C" {
     void inv_set_default_number_of_samples(int N);
     inv_error_t inv_fast_nomot_is_enabled(unsigned char *is_enabled);
     inv_error_t inv_update_fast_nomot(long *gyro);
-
-    void inv_get_fast_nomot_accel_param(long *cntr, long long *param);
-    void inv_get_fast_nomot_compass_param(long *cntr, long long *param);
-    void inv_set_fast_nomot_accel_threshold(long long thresh);
-    void inv_set_fast_nomot_compass_threshold(long long thresh);
-    void int_set_fast_nomot_gyro_threshold(long long thresh);
-
-    void inv_fnm_debug_print(void);
+    
+    void inv_get_fast_nomot_accel_param(long *cntr, float *param);
+    void inv_get_fast_nomot_compass_param(long *cntr, float *param);
+    void inv_set_fast_nomot_accel_threshold(float thresh);
+    void inv_set_fast_nomot_compass_threshold(float thresh);
+    void int_set_fast_nomot_gyro_threshold(float thresh);
 
 #ifdef __cplusplus
 }
