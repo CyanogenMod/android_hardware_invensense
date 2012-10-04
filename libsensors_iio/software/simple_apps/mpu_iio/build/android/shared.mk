@@ -1,4 +1,4 @@
-EXEC = input_gyro$(SHARED_APP_SUFFIX)
+EXEC = inv_mpu_iio$(SHARED_APP_SUFFIX)
 
 MK_NAME = $(notdir $(CURDIR)/$(firstword $(MAKEFILE_LIST)))
 

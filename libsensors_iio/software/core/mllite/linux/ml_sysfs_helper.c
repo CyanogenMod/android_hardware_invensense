@@ -5,7 +5,6 @@
 #include <ctype.h>
 #define MPU_SYSFS_ABS_PATH "/sys/class/invensense/mpu"
 
-#define CHIP_NUM 4
 enum PROC_SYSFS_CMD {
 	CMD_GET_SYSFS_PATH,
 	CMD_GET_DMP_PATH,
@@ -15,7 +14,7 @@ enum PROC_SYSFS_CMD {
 	CMD_GET_DEVICE_NODE
 };
 static char sysfs_path[100];
-static char *chip_name[CHIP_NUM] = {"ITG3500", "MPU6050", "MPU9150", "MPU3050"};
+static char *chip_name[] = {"ITG3500", "MPU6050", "MPU9150", "MPU3050", "MPU6500"};
 static int chip_ind;
 static int initialized =0;
 static int status = 0;
@@ -26,6 +25,8 @@ static int iio_dev_num = 0;
 
 #define FORMAT_SCAN_ELEMENTS_DIR "%s/scan_elements"
 #define FORMAT_TYPE_FILE "%s_type"
+
+#define CHIP_NUM sizeof(chip_name)/sizeof(char*)
 
 static const char *iio_dir = "/sys/bus/iio/devices/";
 
@@ -392,9 +393,9 @@ inv_error_t  inv_get_input_number(const char *name, int *num)
  *           name. It should be zeroed before calling this function.
  *           Or it could have unpredicable result.
  */
-inv_error_t inv_get_iio_trigger_path(const char *name)
+inv_error_t inv_get_iio_trigger_path(char *name)
 {
-	if (process_sysfs_request(CMD_GET_TRIGGER_PATH, name) < 0)
+	if (process_sysfs_request(CMD_GET_TRIGGER_PATH, (char *)name) < 0)
 		return INV_ERROR_NOT_OPENED;
 	else
 		return INV_SUCCESS;
@@ -407,9 +408,9 @@ inv_error_t inv_get_iio_trigger_path(const char *name)
  *           node. It should be zeroed before calling this function.
  *           Or it could have unpredicable result.
  */
-inv_error_t inv_get_iio_device_node(const char *name)
+inv_error_t inv_get_iio_device_node(char *name)
 {
-	if (process_sysfs_request(CMD_GET_DEVICE_NODE, name) < 0)
+	if (process_sysfs_request(CMD_GET_DEVICE_NODE, (char *)name) < 0)
 		return INV_ERROR_NOT_OPENED;
 	else
 		return INV_SUCCESS;

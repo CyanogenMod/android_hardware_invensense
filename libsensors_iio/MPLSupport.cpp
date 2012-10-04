@@ -1,3 +1,19 @@
+/*
+* Copyright (C) 2012 Invensense, Inc.
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*      http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
+
 #include <MPLSupport.h>
 #include <string.h>
 #include <stdio.h>
@@ -61,29 +77,19 @@ int enable_sysfs_sensor(int fd, int en)
 {
     VFUNC_LOG;
 
-    int nb = -1;
+    int nb;
     int err = 0;
 
-    if (fd >= 0) {
-        char buf[2];
-        if (en) {
-            buf[0] = '1';
-            nb = write(fd, buf, 1);
-        } else {
-            buf[0] = '0';
-            nb = write(fd, buf, 1);
-        }
-        buf[1] = '\0';
+    char c = en ? '1' : '0';
+    nb = write(fd, &c, 1);
 
-        if (nb <= 0) {
-            err = errno;
-            LOGE("HAL:enable_sysfs_sensor - write %c returned %d (%s / %d)",
-                 buf[0], nb, strerror(err), err);
-        }
-        close(fd);
-    } else {
-        LOGV_IF(EXTRA_VERBOSE, "HAL:enable_sysfs_sensor - fd<0");
+    if (nb <= 0) {
+        err = errno;
+        LOGE("HAL:enable_sysfs_sensor - write %c returned %d (%s / %d)",
+             c, nb, strerror(err), err);
     }
+    close(fd);
+
 
     return err;
 }
@@ -117,12 +123,15 @@ int read_sysfs_int(char *filename, int *var)
     FILE  *sysfsfp;
 
     sysfsfp = fopen(filename, "r");
-    if (sysfsfp!=NULL) {
-        fscanf(sysfsfp, "%d\n", var);
-	fclose(sysfsfp);
+    if (sysfsfp != NULL) {
+        if (fscanf(sysfsfp, "%d\n", var) < 1) {
+           LOGE("HAL:ERR failed to read an int from %s.", filename);
+           res = -EINVAL;
+        }
+        fclose(sysfsfp);
     } else {
-        LOGE("HAL:ERR open file to read");
-        res= -1;   
+        res = -errno;
+        LOGE("HAL:ERR open file %s to read with error %d", filename, res);
     }
     return res;
 }
@@ -135,10 +144,10 @@ int write_sysfs_int(char *filename, int var)
     sysfsfp = fopen(filename, "w");
     if (sysfsfp!=NULL) {
         fprintf(sysfsfp, "%d\n", var);
-	fclose(sysfsfp);
+        fclose(sysfsfp);
     } else {
-        LOGE("HAL:ERR open file to write");
-        res= -1;   
+        res = -errno;
+        LOGE("HAL:ERR open file %s to read with error %d", filename, res);
     }
     return res;
 }

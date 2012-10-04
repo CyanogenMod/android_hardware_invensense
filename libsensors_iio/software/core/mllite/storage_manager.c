@@ -4,6 +4,7 @@
     See included License.txt for License information.
  $
  */
+
 /**
  *   @defgroup  Storage_Manager storage_manager
  *   @brief     Motion Library - Stores Data for functions.

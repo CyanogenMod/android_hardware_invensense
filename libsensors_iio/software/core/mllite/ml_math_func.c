@@ -648,13 +648,60 @@ void inv_convert_to_body_with_scale(unsigned short orientation, long sensitivity
 }
 
 /** find a norm for a vector
-* @param[in] a vector [3x1]
-* @param[out] output the norm of the input vector
+* @param[in] x a vector [3x1]
+* @return the normalize vector.
 */
 double inv_vector_norm(const float *x)
 {
     return sqrt(x[0]*x[0]+x[1]*x[1]+x[2]*x[2]);
 }
+
+void inv_init_biquad_filter(inv_biquad_filter_t *pFilter, float *pBiquadCoeff) {
+    int i;
+    // initial state to zero
+    pFilter->state[0] = 0;
+    pFilter->state[1] = 0;
+
+    // set up coefficients
+    for (i=0; i<5; i++) {
+        pFilter->c[i] = pBiquadCoeff[i];
+    }
+}
+
+void inv_calc_state_to_match_output(inv_biquad_filter_t *pFilter, float input)
+{
+    float divider;
+    pFilter->input = input;
+    pFilter->output = input;
+    pFilter->state[0] = input / (1 + pFilter->c[2] + pFilter->c[3]);
+    pFilter->state[1] = pFilter->state[0];
+}
+
+float inv_biquad_filter_process(inv_biquad_filter_t *pFilter, float input)  {
+    float stateZero;
+
+    pFilter->input = input;
+    // calculate the new state;
+    stateZero = pFilter->input - pFilter->c[2]*pFilter->state[0]
+                               - pFilter->c[3]*pFilter->state[1];
+
+    pFilter->output = stateZero + pFilter->c[0]*pFilter->state[0]
+                                + pFilter->c[1]*pFilter->state[1];
+
+    // update the output and state
+    pFilter->output = pFilter->output * pFilter->c[4];
+    pFilter->state[1] = pFilter->state[0];
+    pFilter->state[0] = stateZero;
+    return pFilter->output;
+}
+
+void inv_get_cross_product_vec(float *cgcross, float compass[3], float grav[3])  {
+
+    cgcross[0] = (float)compass[1] * grav[2] - (float)compass[2] * grav[1];
+    cgcross[1] = (float)compass[2] * grav[0] - (float)compass[0] * grav[2];
+    cgcross[2] = (float)compass[0] * grav[1] - (float)compass[1] * grav[0];
+}
+
 /**
  * @}
  */

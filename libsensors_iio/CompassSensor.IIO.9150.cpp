@@ -36,7 +36,7 @@
 #define COMPASS_MAX_SYSFS_ATTRB sizeof(compassSysFs) / sizeof(char*)
 
 #if defined COMPASS_YAS530
-#   warning "Invensense compass cal with YAS530 on primary bus"
+#   warning "Invensense compass cal with YAS530 IIO on primary bus"
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_YAS530"
 #elif defined COMPASS_AK8975
@@ -44,7 +44,7 @@
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_AK8975"
 #elif defined INVENSENSE_COMPASS_CAL
-#   warning "Invensense compass cal with compass on secondary bus"
+#   warning "Invensense compass cal with compass IIO on secondary bus"
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_COMPASS"
 #else
@@ -59,9 +59,9 @@
 
 CompassSensor::CompassSensor() 
                   : SensorBase(NULL, NULL),
+                    compass_fd(-1),
                     mCompassTimestamp(0),
-                    mCompassInputReader(8),
-                    compass_fd(-1)
+                    mCompassInputReader(8)
 {
     VFUNC_LOG;
 
@@ -107,7 +107,9 @@ CompassSensor::CompassSensor()
         LOGE("HAL:Couldn't read compass mounting matrix");
     }
 
-    enable(ID_M, 0);
+    if (!isIntegrated()) {
+        enable(ID_M, 0);
+    }
 }
 
 CompassSensor::~CompassSensor()
@@ -139,58 +141,25 @@ int CompassSensor::enable(int32_t handle, int en)
     VFUNC_LOG;
 
     mEnable = en;
-    int tempFd;
     int res;
 
     LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
             en, compassSysFs.compass_enable, getTimestamp());
-    tempFd = open(compassSysFs.compass_enable, O_RDWR);
-    res = errno;
-    if(tempFd < 0) {
-        LOGE("HAL:open of %s failed with '%s' (%d)",
-             compassSysFs.compass_enable, strerror(res), res);
-        return res;
-    }
-    res = enable_sysfs_sensor(tempFd, en);
+    res = write_sysfs_int(compassSysFs.compass_enable, en);
     LOGE_IF(res < 0, "HAL:enable compass failed");
-    close(tempFd);
 
     if (en) {
         LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, compassSysFs.compass_x_fifo_enable, getTimestamp());
-        tempFd = open(compassSysFs.compass_x_fifo_enable, O_RDWR);
-        res = errno;
-        if (tempFd > 0) {
-            res = enable_sysfs_sensor(tempFd, en);
-            close(tempFd);
-        } else {
-            LOGE("HAL:open of %s failed with '%s' (%d)",
-                 compassSysFs.compass_x_fifo_enable, strerror(res), res);
-        }
+        res = write_sysfs_int(compassSysFs.compass_x_fifo_enable, en);
 
         LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, compassSysFs.compass_y_fifo_enable, getTimestamp());
-        tempFd = open(compassSysFs.compass_y_fifo_enable, O_RDWR);
-        res = errno;
-        if (tempFd > 0) {
-            res = enable_sysfs_sensor(tempFd, en);
-            close(tempFd);
-        } else {
-            LOGE("HAL:open of %s failed with '%s' (%d)",
-                 compassSysFs.compass_y_fifo_enable, strerror(res), res);
-        }
+        res = write_sysfs_int(compassSysFs.compass_y_fifo_enable, en);
 
         LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
                 en, compassSysFs.compass_z_fifo_enable, getTimestamp());
-        tempFd = open(compassSysFs.compass_z_fifo_enable, O_RDWR);
-        res = errno;
-        if (tempFd > 0) {
-            res = enable_sysfs_sensor(tempFd, en);
-            close(tempFd);
-        } else {
-            LOGE("HAL:open of %s failed with '%s' (%d)",
-                 compassSysFs.compass_z_fifo_enable, strerror(res), res);
-        }
+        res = write_sysfs_int(compassSysFs.compass_z_fifo_enable, en);
     }
 
     return res;
@@ -327,18 +296,27 @@ void CompassSensor::fillList(struct sensor_t *list)
     if (compass) {
         if(!strcmp(compass, "INV_COMPASS")) {
             list->maxRange = COMPASS_MPU9150_RANGE;
-            list->resolution = COMPASS_MPU9150_RESOLUTION;
+            /* since target platform would use AK8963 instead of AK8975,
+               need to adopt AK8963's resolution here */
+            // list->resolution = COMPASS_MPU9150_RESOLUTION;
+            list->resolution = COMPASS_AKM8963_RESOLUTION;
             list->power = COMPASS_MPU9150_POWER;
             list->minDelay = COMPASS_MPU9150_MINDELAY;
             return;
         }
         if(!strcmp(compass, "compass")
-                || !strcmp(compass, "INV_AK8975")
-                || !strcmp(compass, "INV_YAS530")) {
+                || !strcmp(compass, "INV_AK8975") ) {
             list->maxRange = COMPASS_AKM8975_RANGE;
             list->resolution = COMPASS_AKM8975_RESOLUTION;
             list->power = COMPASS_AKM8975_POWER;
             list->minDelay = COMPASS_AKM8975_MINDELAY;
+            return;
+        }
+        if(!strcmp(compass, "INV_YAS530")) {
+            list->maxRange = COMPASS_YAS530_RANGE;
+            list->resolution = COMPASS_YAS530_RESOLUTION;
+            list->power = COMPASS_YAS530_POWER;
+            list->minDelay = COMPASS_YAS530_MINDELAY;
             return;
         }
         if(!strcmp(compass, "INV_AMI306")) {
@@ -390,16 +368,13 @@ int CompassSensor::inv_init_sysfs_attributes(void)
 
     inv_get_iio_trigger_path(iio_trigger_path);
 
-#if defined COMPASS_YAS530 || defined COMPASS_AK8975
+#if defined COMPASS_AK8975
     inv_get_input_number(COMPASS_NAME, &num);
     tbuf[0] = num + 0x30;
     tbuf[1] = 0;
     sprintf(sysfs_path, "%s%s", "sys/class/input/input", tbuf);
-#if defined COMPASS_YAS530
-    strcat(sysfs_path, "/yas530");
-#else
     strcat(sysfs_path, "/ak8975");
-#endif
+
     sprintf(compassSysFs.compass_enable, "%s%s", sysfs_path, "/enable");
     sprintf(compassSysFs.compass_rate, "%s%s", sysfs_path, "/rate");
     sprintf(compassSysFs.compass_scale, "%s%s", sysfs_path, "/scale");

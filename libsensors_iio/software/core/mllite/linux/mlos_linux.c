@@ -58,7 +58,9 @@ void *inv_malloc(unsigned int numBytes)
 inv_error_t inv_free(void *ptr)
 {
     // Deallocate space.
-    free(ptr);
+    if (ptr) {
+       free(ptr);
+    }
 
     return INV_SUCCESS;
 }

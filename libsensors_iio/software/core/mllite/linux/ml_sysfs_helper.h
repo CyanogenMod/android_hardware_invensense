@@ -27,8 +27,8 @@ inv_error_t inv_get_chip_name(char *name);
 inv_error_t inv_get_sysfs_key(unsigned char *key);
 inv_error_t inv_get_handler_number(const char *name, int *num);
 inv_error_t inv_get_input_number(const char *name, int *num);
-inv_error_t inv_get_iio_trigger_path(const char *name);
-inv_error_t inv_get_iio_device_node(const char *name);
+inv_error_t inv_get_iio_trigger_path(char *name);
+inv_error_t inv_get_iio_device_node(char *name);
 
 #ifdef __cplusplus
 }

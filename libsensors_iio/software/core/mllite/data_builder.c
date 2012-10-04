@@ -23,6 +23,7 @@
 #include "mlmath.h"
 #include "storage_manager.h"
 #include "message_layer.h"
+#include "results_holder.h"
 
 #include "log.h"
 #undef MPL_LOG_TAG
@@ -48,6 +49,10 @@ struct inv_db_save_t {
     /** Temperature when accel bias was stored. */
     long accel_temp;
     long gyro_temp_slope[3];
+    /** Sensor Accuracy */
+    int gyro_accuracy;
+    int accel_accuracy;
+    int compass_accuracy;
 };
 
 struct inv_data_builder_t {
@@ -69,7 +74,7 @@ static struct inv_data_builder_t inv_data_builder;
 static struct inv_sensor_cal_t sensors;
 
 /** Change this key if the data being stored by this file changes */
-#define INV_DB_SAVE_KEY 53394
+#define INV_DB_SAVE_KEY 53395
 
 #ifdef INV_PLAYBACK_DBG
 
@@ -98,6 +103,14 @@ void inv_turn_off_data_logging()
 static inv_error_t inv_db_load_func(const unsigned char *data)
 {
     memcpy(&inv_data_builder.save, data, sizeof(inv_data_builder.save));
+    // copy in the saved accuracy in the actual sensors accuracy
+    sensors.gyro.accuracy = inv_data_builder.save.gyro_accuracy;
+    sensors.accel.accuracy = inv_data_builder.save.accel_accuracy;
+    sensors.compass.accuracy = inv_data_builder.save.compass_accuracy;
+    // TODO
+    if (sensors.compass.accuracy == 3) {
+        inv_set_compass_bias_found(1);
+    }
     return INV_SUCCESS;
 }
 
@@ -162,119 +175,7 @@ void set_sensor_orientation_and_scale(struct inv_single_sensor_t *sensor,
     sensor->sensitivity = sensitivity;
     sensor->orientation = orientation;
 }
-void inv_get_quaternion_transformation(int orientation, long *q)
-{
-    long s = 759250125; // sqrt(.5)*2^30
 
-    switch (orientation)
-    {
-    case 0x70:
-        q[0] = 759250125;
-        q[1] = 759250125;
-        q[2] = 0;
-        q[3] = 0;
-        break;
-    case 0x10a:
-        q[0] = 759250125;
-        q[1] = 0;
-        q[2] = 759250125;
-        q[3] = 0;
-        break;
-    case 0x85:
-        q[0] = 759250125;
-        q[1] = 0;
-        q[2] = 0;
-        q[3] = 759250125;
-        break;
-    case 0x181:
-        q[0] = 0;
-        q[1] = 759250125;
-        q[2] = 759250125;
-        q[3] = 0;
-        break;
-    case 0x2a:
-        q[0] = 0;
-        q[1] = 759250125;
-        q[2] = 0;
-        q[3] = 759250125;
-        break;
-    case 0x54:
-        q[0] = 0;
-        q[1] = 0;
-        q[2] = 759250125;
-        q[3] = 759250125;
-        break;
-    case 0x150:
-        q[0] = 759250125;
-        q[1] = -759250125;
-        q[2] = 0;
-        q[3] = 0;
-        break;
-    case 0xe:
-        q[0] = 759250125;
-        q[1] = 0;
-        q[2] = -759250125;
-        q[3] = 0;
-        break;
-    case 0xa1:
-        q[0] = 759250125;
-        q[1] = 0;
-        q[2] = 0;
-        q[3] = -759250125;
-        break;
-    case 0x1a5:
-        q[0] = 0;
-        q[1] = 759250125;
-        q[2] = -759250125;
-        q[3] = 0;
-        break;
-    case 0x12e:
-        q[0] = 0;
-        q[1] = 759250125;
-        q[2] = 0;
-        q[3] = -759250125;
-        break;
-    case 0x174:
-        q[0] = 0;
-        q[1] = 0;
-        q[2] = 759250125;
-        q[3] = -759250125;
-        break;
-
-
-    case 0x88:
-        q[0] = 1073741824;
-        q[1] = 0;
-        q[2] = 0;
-        q[3] = 0;
-        break;
-
-
-    case 0x1a8:
-        q[0] = 0;
-        q[1] = 1073741824;
-        q[2] = 0;
-        q[3] = 0;
-        break;
-
-    case 0x18c:
-        q[0] = 0;
-        q[1] = 0;
-        q[2] = 1073741824;
-        q[3] = 0;
-        break;
-
-    case 0xac:
-        q[0] = 0;
-        q[1] = 0;
-        q[2] = 0;
-        q[3] = 1073741824;
-        break;
-
-    default:
-        break;
-    }
-}
 /** Sets the Orientation and Sensitivity of the gyro data.
 * @param[in] orientation A scalar defining the transformation from chip mounting
 *            to the body frame. The function inv_orientation_matrix_to_scalar()
@@ -354,6 +255,22 @@ void inv_set_compass_sample_rate(long sample_rate_us)
         sensors.compass.bandwidth = (int)(1000000L / sample_rate_us);
     }
 }
+
+void inv_get_gyro_sample_rate_ms(long *sample_rate_ms)
+{
+	*sample_rate_ms = sensors.gyro.sample_rate_ms;
+}
+
+void inv_get_accel_sample_rate_ms(long *sample_rate_ms)
+{
+	*sample_rate_ms = sensors.accel.sample_rate_ms;
+}
+
+void inv_get_compass_sample_rate_ms(long *sample_rate_ms)
+{
+	*sample_rate_ms = sensors.compass.sample_rate_ms;
+}
+
 /** Set Quat Sample rate in micro seconds.
 * @param[in] sample_rate_us Set Quat Sample rate in us
 */
@@ -498,7 +415,7 @@ void inv_matrix_vector_mult(const long *A, const long *x, long *y)
 }
 
 /** Takes raw data stored in the sensor, removes bias, and converts it to
-* calibrated data in the body frame.
+* calibrated data in the body frame. Also store raw data for body frame.
 * @param[in,out] sensor structure to modify
 * @param[in] bias bias in the mounting frame, in hardware units scaled by
 *                 2^16. Length 3.
@@ -508,15 +425,17 @@ void inv_apply_calibration(struct inv_single_sensor_t *sensor, const long *bias)
     long raw32[3];
 
     // Convert raw to calibrated
-    raw32[0] = (long)sensor->raw[0] << 16;
-    raw32[1] = (long)sensor->raw[1] << 16;
-    raw32[2] = (long)sensor->raw[2] << 16;
+    raw32[0] = (long)sensor->raw[0] << 15;
+    raw32[1] = (long)sensor->raw[1] << 15;
+    raw32[2] = (long)sensor->raw[2] << 15;
 
-    raw32[0] -= bias[0];
-    raw32[1] -= bias[1];
-    raw32[2] -= bias[2];
+    inv_convert_to_body_with_scale(sensor->orientation, sensor->sensitivity << 1, raw32, sensor->raw_data);
 
-    inv_convert_to_body_with_scale(sensor->orientation, sensor->sensitivity, raw32, sensor->calibrated);
+    raw32[0] -= bias[0] >> 1;
+    raw32[1] -= bias[1] >> 1;
+    raw32[2] -= bias[2] >> 1;
+
+    inv_convert_to_body_with_scale(sensor->orientation, sensor->sensitivity << 1, raw32, sensor->calibrated);
 
     sensor->status |= INV_CALIBRATED;
 }
@@ -539,6 +458,7 @@ void inv_set_compass_bias(const long *bias, int accuracy)
         inv_apply_calibration(&sensors.compass, inv_data_builder.save.compass_bias);
     }
     sensors.compass.accuracy = accuracy;
+    inv_data_builder.save.compass_accuracy = accuracy;
     inv_set_message(INV_MSG_NEW_CB_EVENT, INV_MSG_NEW_CB_EVENT, 0);
 }
 
@@ -566,6 +486,7 @@ void inv_set_accel_bias(const long *bias, int accuracy)
         }
     }
     sensors.accel.accuracy = accuracy;
+    inv_data_builder.save.accel_accuracy = accuracy;
     inv_set_message(INV_MSG_NEW_AB_EVENT, INV_MSG_NEW_AB_EVENT, 0);
 }
 
@@ -590,6 +511,7 @@ void inv_set_accel_bias_mask(const long *bias, int accuracy, int mask)
         inv_apply_calibration(&sensors.accel, inv_data_builder.save.accel_bias);
     }
     sensors.accel.accuracy = accuracy;
+    inv_data_builder.save.accel_accuracy = accuracy;
 }
 
 
@@ -607,6 +529,8 @@ void inv_set_gyro_bias(const long *bias, int accuracy)
         }
     }
     sensors.gyro.accuracy = accuracy;
+    inv_data_builder.save.gyro_accuracy = accuracy;
+
     /* TODO: What should we do if there's no temperature data? */
     if (sensors.temp.calibrated[0])
         inv_data_builder.save.gyro_temp = sensors.temp.calibrated[0];
@@ -687,6 +611,7 @@ inv_error_t inv_build_accel(const long *accel, int status, inv_time_t timestamp)
         sensors.accel.calibrated[2] = accel[2];
         sensors.accel.status |= INV_CALIBRATED;
         sensors.accel.accuracy = status & 3;
+        inv_data_builder.save.accel_accuracy = status & 3;
     }
     sensors.accel.status |= INV_NEW_DATA | INV_SENSOR_ON;
     sensors.accel.timestamp_prev = sensors.accel.timestamp;
@@ -757,6 +682,7 @@ inv_error_t inv_build_compass(const long *compass, int status,
         sensors.compass.calibrated[2] = compass[2];
         sensors.compass.status |= INV_CALIBRATED;
         sensors.compass.accuracy = status & 3;
+        inv_data_builder.save.compass_accuracy = status & 3;
     }
     sensors.compass.timestamp_prev = sensors.compass.timestamp;
     sensors.compass.timestamp = timestamp;
@@ -1069,6 +995,22 @@ void inv_get_accel_set(long *data, int8_t *accuracy, inv_time_t *timestamp)
 void inv_get_gyro_set(long *data, int8_t *accuracy, inv_time_t *timestamp)
 {
     memcpy(data, sensors.gyro.calibrated, sizeof(sensors.gyro.calibrated));
+    if (timestamp != NULL) {
+        *timestamp = sensors.gyro.timestamp;
+    }
+    if (accuracy != NULL) {
+        *accuracy = sensors.gyro.accuracy;
+    }
+}
+
+/** Gets a whole set of gyro raw data including data, accuracy and timestamp.
+ * @param[out] data Gyro Data where 1 dps = 2^16
+ * @param[out] accuracy Accuracy 0 being not accurate, and 3 being most accurate.
+ * @param[out] timestamp The timestamp of the data sample.
+*/
+void inv_get_gyro_set_raw(long *data, int8_t *accuracy, inv_time_t *timestamp)
+{
+    memcpy(data, sensors.gyro.raw_data, sizeof(sensors.gyro.raw_data));
     if (timestamp != NULL) {
         *timestamp = sensors.gyro.timestamp;
     }

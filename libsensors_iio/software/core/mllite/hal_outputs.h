@@ -19,6 +19,8 @@ extern "C" {
                                            inv_time_t * timestamp);
     int inv_get_sensor_type_gyroscope(float *values, int8_t *accuracy,
                                        inv_time_t * timestamp);
+    int inv_get_sensor_type_gyroscope_raw(float *values, int8_t *accuracy,
+                                       inv_time_t * timestamp);
     int inv_get_sensor_type_magnetic_field(float *values, int8_t *accuracy,
                                             inv_time_t * timestamp);
     int inv_get_sensor_type_rotation_vector(float *values, int8_t *accuracy,

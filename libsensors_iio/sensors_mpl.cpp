@@ -36,10 +36,16 @@
 
 /*****************************************************************************/
 /* The SENSORS Module */
-#define LOCAL_SENSORS (7)
 
-static struct sensor_t sSensorList[7];
-static int numSensors = LOCAL_SENSORS;
+#ifdef ENABLE_DMP_SCREEN_AUTO_ROTATION
+#define LOCAL_SENSORS (numSensors + 1)
+#else
+#define LOCAL_SENSORS numSensors
+
+#endif
+
+static struct sensor_t sSensorList[LOCAL_SENSORS];
+static int sensors = LOCAL_SENSORS;
 
 static int open_sensors(const struct hw_module_t* module, const char* id,
                         struct hw_device_t** device);
@@ -48,7 +54,7 @@ static int sensors__get_sensors_list(struct sensors_module_t* module,
                                      struct sensor_t const** list)
 {
     *list = sSensorList;
-    return numSensors;
+    return sensors;
 }
 
 static struct hw_module_methods_t sensors_module_methods = {
@@ -81,13 +87,13 @@ private:
     enum {
         mpl = 0,
         compass,
+        dmpOrient,
         numSensorDrivers,   // wake pipe goes here
         numFds,
     };
 
     struct pollfd mPollFds[numSensorDrivers];
     SensorBase *mSensor;
-    CompassSensor *mCompassSensor;
 };
 
 /******************************************************************************/
@@ -100,9 +106,9 @@ sensors_poll_context_t::sensors_poll_context_t() {
 
     // setup the callback object for handing mpl callbacks
     setCallbackObject(mplSensor);
-    
+
     // populate the sensor list
-    numSensors =
+    sensors =
             mplSensor->populateSensorList(sSensorList, sizeof(sSensorList));
 
     mSensor = mplSensor;
@@ -113,12 +119,15 @@ sensors_poll_context_t::sensors_poll_context_t() {
     mPollFds[compass].fd = mCompassSensor->getFd();
     mPollFds[compass].events = POLLIN;
     mPollFds[compass].revents = 0;
+
+    mPollFds[dmpOrient].fd = ((MPLSensor*) mSensor)->getDmpOrientFd();
+    mPollFds[dmpOrient].events = POLLPRI;
+    mPollFds[dmpOrient].revents = 0;
 }
 
 sensors_poll_context_t::~sensors_poll_context_t() {
     FUNC_LOG;
     delete mSensor;
-    delete mCompassSensor;
 }
 
 int sensors_poll_context_t::activate(int handle, int enabled) {
@@ -144,22 +153,16 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
 
     if (nb > 0) {
         for (int i = 0; count && i < numSensorDrivers; i++) {
-            if (mPollFds[i].revents & POLLIN) {
+            if (mPollFds[i].revents & (POLLIN | POLLPRI)) {
                 nb = 0;
                 if (i == mpl) {
                     nb = mSensor->readEvents(data, count);
+                    mPollFds[i].revents = 0;
                 }
                 else if (i == compass) {
                     nb = ((MPLSensor*) mSensor)->readCompassEvents(data, count);
-                }
-/*
-                if (nb > 0) {
-                    count -= nb;
-                    nbEvents += nb;
-                    data += nb;
                     mPollFds[i].revents = 0;
                 }
- */
             }
         }
         nb = ((MPLSensor*) mSensor)->executeOnData(data, count);
@@ -167,8 +170,16 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
             count -= nb;
             nbEvents += nb;
             data += nb;
-            mPollFds[mpl].revents = 0;
-            mPollFds[compass].revents = 0;
+        }
+
+        if (mPollFds[dmpOrient].revents & (POLLIN | POLLPRI)) {
+            nb = ((MPLSensor*) mSensor)->readDmpOrientEvents(data, count);
+            mPollFds[dmpOrient].revents= 0;
+            if (isDmpScreenAutoRotationOn() && nb > 0) {
+                count -= nb;
+                nbEvents += nb;
+                data += nb;
+            }
         }
     }
 
