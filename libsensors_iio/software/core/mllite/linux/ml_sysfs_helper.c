@@ -14,7 +14,13 @@ enum PROC_SYSFS_CMD {
 	CMD_GET_DEVICE_NODE
 };
 static char sysfs_path[100];
-static char *chip_name[] = {"ITG3500", "MPU6050", "MPU9150", "MPU3050", "MPU6500"};
+static char *chip_name[] = {
+    "ITG3500", 
+    "MPU6050", 
+    "MPU9150", 
+    "MPU3050", 
+    "MPU6500"
+};
 static int chip_ind;
 static int initialized =0;
 static int status = 0;
@@ -26,7 +32,7 @@ static int iio_dev_num = 0;
 #define FORMAT_SCAN_ELEMENTS_DIR "%s/scan_elements"
 #define FORMAT_TYPE_FILE "%s_type"
 
-#define CHIP_NUM sizeof(chip_name)/sizeof(char*)
+#define CHIP_NUM ARRAY_SIZE(chip_name)
 
 static const char *iio_dir = "/sys/bus/iio/devices/";
 
@@ -94,7 +100,7 @@ int find_type_by_name(const char *name, const char *type)
  */
 static int parsing_proc_input(int mode, char *name){
 	const char input[] = "/proc/bus/input/devices";
-	char line[100], d;
+	char line[4096], d;
 	char tmp[100];
 	FILE *fp;
 	int i, j, result, find_flag;

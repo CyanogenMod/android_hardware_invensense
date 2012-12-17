@@ -71,7 +71,7 @@ struct inv_single_sensor_t {
     /** The raw data in raw data units in the mounting frame */
     short raw[3];
     /** Raw data in body frame */
-    long raw_data[3];
+    long raw_scaled[3];
     /** Calibrated data */
     long calibrated[3];
     long sensitivity;
@@ -188,6 +188,7 @@ void inv_set_compass_bias(const long *bias, int accuracy);
 void inv_set_compass_disturbance(int dist);
 void inv_set_gyro_bias(const long *bias, int accuracy);
 void inv_set_accel_bias(const long *bias, int accuracy);
+void inv_set_accel_accuracy(int accuracy);
 void inv_set_accel_bias_mask(const long *bias, int accuracy, int mask);
 
 void inv_get_gyro_bias(long *bias, long *temp);

@@ -1,13 +1,14 @@
 /*
  $License:
-    Copyright (C) 2011 InvenSense Corporation, All Rights Reserved.
+    Copyright (C) 2012 InvenSense Corporation, All Rights Reserved.
  $
  */
+
 /*******************************************************************************
  *
  * $Id: mlos_linux.c 5629 2011-06-11 03:13:08Z mcaramello $
  *
- *******************************************************************************/
+ ******************************************************************************/
 
 /**
  *  @defgroup MLOS
@@ -16,7 +17,7 @@
  *  @{
  *      @file mlos.c
  *      @brief OS Interface.
-**/
+ */
 
 /* ------------- */
 /* - Includes. - */
@@ -26,11 +27,10 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "stdint_invensense.h"
-
 #include "mlos.h"
-#include <errno.h>
 
 
 /* -------------- */
@@ -39,14 +39,14 @@
 
 /**
  *  @brief  Allocate space
- *  @param  numBytes  number of bytes
+ *  @param  num_bytes  number of bytes
  *  @return pointer to allocated space
-**/
-void *inv_malloc(unsigned int numBytes)
+ */
+void *inv_malloc(unsigned int num_bytes)
 {
     // Allocate space.
-    void *allocPtr = malloc(numBytes);
-    return allocPtr;
+    void *alloc_ptr = malloc(num_bytes);
+    return alloc_ptr;
 }
 
 
@@ -54,14 +54,11 @@ void *inv_malloc(unsigned int numBytes)
  *  @brief  Free allocated space
  *  @param  ptr pointer to space to deallocate
  *  @return error code.
-**/
+ */
 inv_error_t inv_free(void *ptr)
 {
-    // Deallocate space.
-    if (ptr) {
-       free(ptr);
-    }
-
+    if (ptr)
+        free(ptr);
     return INV_SUCCESS;
 }
 
@@ -98,10 +95,10 @@ inv_error_t inv_create_mutex(HANDLE *mutex)
 inv_error_t inv_lock_mutex(HANDLE mutex)
 {
     int res;
-    pthread_mutex_t *pm = (pthread_mutex_t*)mutex;
+    pthread_mutex_t *pm = (pthread_mutex_t *)mutex;
 
     res = pthread_mutex_lock(pm);
-    if(res == -1) 
+    if(res == -1)
         return INV_ERROR_OS_LOCK_FAILED;
 
     return INV_SUCCESS;
@@ -112,11 +109,11 @@ inv_error_t inv_lock_mutex(HANDLE mutex)
  *  @brief  Mutex unlock function
  *  @param  mutex   mutex handle
  *  @return error code.
-**/
+ */
 inv_error_t inv_unlock_mutex(HANDLE mutex)
 {
     int res;
-    pthread_mutex_t *pm = (pthread_mutex_t*)mutex;
+    pthread_mutex_t *pm = (pthread_mutex_t *)mutex;
 
     res = pthread_mutex_unlock(pm);
     if(res == -1) 
@@ -133,7 +130,7 @@ inv_error_t inv_unlock_mutex(HANDLE mutex)
  */
 FILE *inv_fopen(char *filename)
 {
-    FILE *fp = fopen(filename,"r");
+    FILE *fp = fopen(filename, "r");
     return fp;
 }
 
@@ -156,22 +153,21 @@ void inv_fclose(FILE *fp)
 inv_error_t inv_destroy_mutex(HANDLE handle)
 {
     int error;
-    pthread_mutex_t *pm = (pthread_mutex_t*)handle;
+    pthread_mutex_t *pm = (pthread_mutex_t *)handle;
     error = pthread_mutex_destroy(pm);
-    if (error) {
+    if (error)
         return errno;
-    }
     free((void*) handle);
-    
+
     return INV_SUCCESS;}
 
 
 /**
  *  @brief  Sleep function.
  */
-void inv_sleep(int mSecs)
+void inv_sleep(int m_secs)
 {
-    usleep(mSecs*1000);
+    usleep(m_secs * 1000);
 }
 
 
@@ -184,13 +180,11 @@ unsigned long inv_get_tick_count()
 {
     struct timeval tv;
 
-    if (gettimeofday(&tv, NULL) !=0)
+    if (gettimeofday(&tv, NULL) != 0)
         return 0;
 
     return (long)((tv.tv_sec * 1000000LL + tv.tv_usec) / 1000LL);
 }
 
-  /**********************/
- /** @} */ /* defgroup */
-/**********************/
+/** @} */
 

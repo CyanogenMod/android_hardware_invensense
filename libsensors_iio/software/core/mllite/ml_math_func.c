@@ -670,7 +670,6 @@ void inv_init_biquad_filter(inv_biquad_filter_t *pFilter, float *pBiquadCoeff) {
 
 void inv_calc_state_to_match_output(inv_biquad_filter_t *pFilter, float input)
 {
-    float divider;
     pFilter->input = input;
     pFilter->output = input;
     pFilter->state[0] = input / (1 + pFilter->c[2] + pFilter->c[3]);

@@ -14,12 +14,30 @@
 * limitations under the License.
 */
 
+#define LOG_NDEBUG 0
+
 #include <MPLSupport.h>
 #include <string.h>
 #include <stdio.h>
+#include <fcntl.h>
+
 #include "log.h"
 #include "SensorBase.h"
-#include <fcntl.h>
+
+#include "ml_sysfs_helper.h"
+#include "local_log_def.h"
+
+int64_t getTimestamp()
+{
+    struct timespec t;
+    t.tv_sec = t.tv_nsec = 0;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return int64_t(t.tv_sec) * 1000000000LL + t.tv_nsec;
+}
+
+int64_t timevalToNano(timeval const& t) {
+    return t.tv_sec * 1000000000LL + t.tv_usec * 1000;
+}
 
 int inv_read_data(char *fname, long *data)
 {
@@ -138,16 +156,35 @@ int read_sysfs_int(char *filename, int *var)
 
 int write_sysfs_int(char *filename, int var)
 {
-    int res=0;
+    int res = 0;
     FILE  *sysfsfp;
 
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
+            var, filename, getTimestamp());
     sysfsfp = fopen(filename, "w");
-    if (sysfsfp!=NULL) {
-        fprintf(sysfsfp, "%d\n", var);
-        fclose(sysfsfp);
-    } else {
+    if (sysfsfp == NULL) {
         res = -errno;
-        LOGE("HAL:ERR open file %s to read with error %d", filename, res);
+        LOGE("HAL:ERR open file %s to write with error %d", filename, res);
+        return res;
+    }
+    int fpres, fcres = 0;
+    fpres = fprintf(sysfsfp, "%d\n", var);
+    /* fprintf() can succeed because it never actually writes to the
+     * underlying sysfs node.
+     */
+    if (fpres < 0) {
+       res = -errno;
+       fclose(sysfsfp);
+    } else {
+        fcres = fclose(sysfsfp);
+        /* Check for errors from: fflush(), write(), and close() */
+        if (fcres < 0) {
+            res = -errno;
+        }
+    }
+    if (fpres < 0 || fcres < 0) {
+        LOGE("HAL:ERR failed to write %d to %s (err=%d) print/close=%d/%d",
+            var, filename, res, fpres, fcres);
     }
     return res;
 }

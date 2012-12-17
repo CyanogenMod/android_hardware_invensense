@@ -21,13 +21,12 @@
 
 #include <stdio.h>
 
+#include "log.h"
 #undef MPL_LOG_TAG
 #define MPL_LOG_TAG "MPL-storeload"
 
-
 #include "ml_stored_data.h"
 #include "storage_manager.h"
-#include "log.h"
 #include "mlos.h"
 
 #define LOADCAL_DEBUG    0
@@ -346,7 +345,7 @@ inv_error_t inv_store_calibration(void)
 
 free_mem_n_exit:
     inv_free(calData);
-    return INV_SUCCESS;
+    return result;
 }
 
 /**

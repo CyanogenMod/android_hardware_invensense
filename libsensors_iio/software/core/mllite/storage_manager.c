@@ -14,6 +14,9 @@
  *       @file storage_manager.c
  *       @brief Load and Store Manager.
  */
+
+#include <string.h>
+
 #include "storage_manager.h"
 #include "log.h"
 #include "ml_math_func.h"

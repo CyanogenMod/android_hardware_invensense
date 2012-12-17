@@ -1,9 +1,6 @@
 #ifndef LOCAL_LOG_DEF_H
 #define LOCAL_LOG_DEF_H
 
-/* comment this line if Android OS is ICS and prior */
-#define ANDROID_VERSION_JB      (1)
-
 /* Log enablers, each of these independent */
 
 #define PROCESS_VERBOSE (0) /* process log messages */
@@ -18,7 +15,7 @@
 #define INPUT_DATA      (0) /* log the data input from the events */
 #define HANDLER_DATA    (0) /* log the data fetched from the handlers */
 
-#ifdef ANDROID_VERSION_JB
+#if defined ANDROID_JELLYBEAN
 #define LOGV            ALOGV
 #define LOGV_IF         ALOGV_IF
 #define LOGD            ALOGD
@@ -37,7 +34,10 @@
 #define LOG_ASSERT      ALOG_ASSERT
 #define LOG                     ALOG
 #define IF_LOG          IF_ALOG
+#else
+#warning "build for ICS or earlier version"
 #endif
+
 
 #define FUNC_LOG \
             LOGV("%s", __PRETTY_FUNCTION__)
@@ -46,4 +46,4 @@
 #define VHANDLER_LOG \
             LOGV_IF(HANDLER_ENTRY, "Entering handler '%s'", __PRETTY_FUNCTION__)
 
-#endif
+#endif /*ifndef LOCAL_LOG_DEF_H */
