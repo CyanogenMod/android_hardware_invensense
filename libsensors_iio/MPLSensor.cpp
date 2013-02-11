@@ -264,35 +264,26 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     mPendingEvents[RotationVector].version = sizeof(sensors_event_t);
     mPendingEvents[RotationVector].sensor = ID_RV;
     mPendingEvents[RotationVector].type = SENSOR_TYPE_ROTATION_VECTOR;
-    mPendingEvents[RotationVector].acceleration.status
-            = SENSOR_STATUS_ACCURACY_HIGH;
 
     mPendingEvents[LinearAccel].version = sizeof(sensors_event_t);
     mPendingEvents[LinearAccel].sensor = ID_LA;
     mPendingEvents[LinearAccel].type = SENSOR_TYPE_LINEAR_ACCELERATION;
-    mPendingEvents[LinearAccel].acceleration.status
-            = SENSOR_STATUS_ACCURACY_HIGH;
 
     mPendingEvents[Gravity].version = sizeof(sensors_event_t);
     mPendingEvents[Gravity].sensor = ID_GR;
     mPendingEvents[Gravity].type = SENSOR_TYPE_GRAVITY;
-    mPendingEvents[Gravity].acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
 
     mPendingEvents[Gyro].version = sizeof(sensors_event_t);
     mPendingEvents[Gyro].sensor = ID_GY;
     mPendingEvents[Gyro].type = SENSOR_TYPE_GYROSCOPE;
-    mPendingEvents[Gyro].gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
 
     mPendingEvents[RawGyro].version = sizeof(sensors_event_t);
     mPendingEvents[RawGyro].sensor = ID_RG;
     mPendingEvents[RawGyro].type = SENSOR_TYPE_GYROSCOPE;
-    mPendingEvents[RawGyro].gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
 
     mPendingEvents[Accelerometer].version = sizeof(sensors_event_t);
     mPendingEvents[Accelerometer].sensor = ID_A;
     mPendingEvents[Accelerometer].type = SENSOR_TYPE_ACCELEROMETER;
-    mPendingEvents[Accelerometer].acceleration.status
-            = SENSOR_STATUS_ACCURACY_HIGH;
 
     /* Invensense compass calibration */
     mPendingEvents[MagneticField].version = sizeof(sensors_event_t);
@@ -1208,8 +1199,9 @@ void MPLSensor::cbProcData()
 int MPLSensor::gyroHandler(sensors_event_t* s)
 {
     VHANDLER_LOG;
+    int8_t status;
     int update;
-    update = inv_get_sensor_type_gyroscope(s->gyro.v, &s->gyro.status, &s->timestamp);
+    update = inv_get_sensor_type_gyroscope(s->gyro.v, &status, &s->timestamp);
     LOGV_IF(HANDLER_DATA, "HAL:gyro data : %+f %+f %+f -- %lld - %d",
             s->gyro.v[0], s->gyro.v[1], s->gyro.v[2], s->timestamp, update);
     return update;
@@ -1218,8 +1210,9 @@ int MPLSensor::gyroHandler(sensors_event_t* s)
 int MPLSensor::rawGyroHandler(sensors_event_t* s)
 {
     VHANDLER_LOG;
+    int8_t status;
     int update;
-    update = inv_get_sensor_type_gyroscope_raw(s->gyro.v, &s->gyro.status, &s->timestamp);
+    update = inv_get_sensor_type_gyroscope_raw(s->gyro.v, &status, &s->timestamp);
     LOGV_IF(HANDLER_DATA, "HAL:raw gyro data : %+f %+f %+f -- %lld - %d",
             s->gyro.v[0], s->gyro.v[1], s->gyro.v[2], s->timestamp, update);
     return update;
@@ -1228,13 +1221,14 @@ int MPLSensor::rawGyroHandler(sensors_event_t* s)
 int MPLSensor::accelHandler(sensors_event_t* s)
 {
     VHANDLER_LOG;
+    int8_t status;
     int update;
     update = inv_get_sensor_type_accelerometer(
-        s->acceleration.v, &s->acceleration.status, &s->timestamp);
+        s->acceleration.v, &status, &s->timestamp);
     LOGV_IF(HANDLER_DATA, "HAL:accel data : %+f %+f %+f -- %lld - %d",
             s->acceleration.v[0], s->acceleration.v[1], s->acceleration.v[2],
             s->timestamp, update);
-    mAccelAccuracy = s->acceleration.status;
+    mAccelAccuracy = status;
     return update;
 }
 
@@ -1265,9 +1259,10 @@ int MPLSensor::rvHandler(sensors_event_t* s)
 int MPLSensor::laHandler(sensors_event_t* s)
 {
     VHANDLER_LOG;
+    int8_t status;
     int update;
     update = inv_get_sensor_type_linear_acceleration(
-            s->gyro.v, &s->gyro.status, &s->timestamp);
+            s->gyro.v, &status, &s->timestamp);
     LOGV_IF(HANDLER_DATA, "HAL:la data: %+f %+f %+f - %lld - %d",
             s->gyro.v[0], s->gyro.v[1], s->gyro.v[2], s->timestamp, update);
     return update;
@@ -1276,8 +1271,9 @@ int MPLSensor::laHandler(sensors_event_t* s)
 int MPLSensor::gravHandler(sensors_event_t* s)
 {
     VHANDLER_LOG;
+    int8_t status;
     int update;
-    update = inv_get_sensor_type_gravity(s->gyro.v, &s->gyro.status, &s->timestamp);
+    update = inv_get_sensor_type_gravity(s->gyro.v, &status, &s->timestamp);
     LOGV_IF(HANDLER_DATA, "HAL:gr data: %+f %+f %+f - %lld - %d",
             s->gyro.v[0], s->gyro.v[1], s->gyro.v[2], s->timestamp, update);
     return update;

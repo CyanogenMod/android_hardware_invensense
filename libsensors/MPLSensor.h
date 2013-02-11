@@ -87,7 +87,6 @@ protected:
     void calcOrientationSensor(float *Rx, float *Val);
     int estimateCompassAccuracy();
 
-    int mMpuAccuracy; //global storage for the current accuracy status
     int mNewData; //flag indicating that the MPL calculated new output values
     int mDmpStarted;
     long mMasterSensorMask;
