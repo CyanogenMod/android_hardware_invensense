@@ -123,42 +123,6 @@ ifeq ($(VERSION_JB),true)
 LOCAL_CFLAGS += -DANDROID_JELLYBEAN
 endif
 
-ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
-ifneq ($(COMPILE_INVENSENSE_COMPASS_CAL),0)
-LOCAL_CFLAGS += -DINVENSENSE_COMPASS_CAL
-endif
-ifeq ($(COMPILE_THIRD_PARTY_ACCEL),1)
-LOCAL_CFLAGS += -DTHIRD_PARTY_ACCEL
-endif
-ifeq ($(COMPILE_INVENSENSE_SENSOR_ON_PRIMARY_BUS), 1)
-LOCAL_SRC_FILES += CompassSensor.IIO.primary.cpp
-LOCAL_CFLAGS += -DSENSOR_ON_PRIMARY_BUS
-else
-LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
-endif
-else # release builds, default
-LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
-endif # userdebug
-
-ifeq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
-ifneq ($(filter manta grouper tilapia, $(TARGET_DEVICE)),)
-# it's already defined in some other Makefile for production builds
-#LOCAL_SRC_FILES := sensors_mpl.cpp
-else
-LOCAL_SRC_FILES := sensors_mpl.cpp
-endif
-else    # eng & userdebug builds
-LOCAL_SRC_FILES := sensors_mpl.cpp
-endif   # eng & userdebug builds
-
-LOCAL_SHARED_LIBRARIES := libinvensense_hal
-LOCAL_SHARED_LIBRARIES += libcutils
-LOCAL_SHARED_LIBRARIES += libutils
-LOCAL_SHARED_LIBRARIES += libdl
-LOCAL_SHARED_LIBRARIES += liblog
-LOCAL_SHARED_LIBRARIES += libmllite
-include $(BUILD_SHARED_LIBRARY)
-
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmplmpu
 LOCAL_SRC_FILES := libmplmpu.so
