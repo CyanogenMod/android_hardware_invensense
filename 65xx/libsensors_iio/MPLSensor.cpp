@@ -1653,7 +1653,8 @@ int MPLSensor::enablePressure(int en)
 
     int res = 0;
  
-    res = mPressureSensor->enable(ID_PS, en);
+    if (mPressureSensor)
+        res = mPressureSensor->enable(ID_PS, en);
     
     return res;
 }
@@ -2960,7 +2961,8 @@ int MPLSensor::update_delay(void)
                     getDmpRate(&wanted);
                 }
 
-               mPressureSensor->setDelay(ID_PS, wanted);
+                if (mPressureSensor)
+                    mPressureSensor->setDelay(ID_PS, wanted);
                 LOGE_IF(res < 0, "HAL:PRESSURE update delay error");
             }
 
