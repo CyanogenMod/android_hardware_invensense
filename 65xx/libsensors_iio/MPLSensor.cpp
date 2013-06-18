@@ -1821,8 +1821,11 @@ int MPLSensor::enablePressure(int en)
 
     int res = 0;
 
-    if (mPressureSensor) 
+    if (mPressureSensor) {
         res = mPressureSensor->enable(ID_PS, en);
+    } else {
+        LOGV_IF(ENG_VERBOSE, "HAL:PRESSURE sensor not detected");
+    }
     
     return res;
 }
@@ -3327,7 +3330,11 @@ int MPLSensor::update_delay(void)
                     //getDmpRate(&tempWanted);
                 }
 
-               mPressureSensor->setDelay(ID_PS, wanted);
+                if (mPressureSensor) {
+                    mPressureSensor->setDelay(ID_PS, wanted);
+                } else {
+                    LOGV_IF(ENG_VERBOSE, "HAL:PRESSURE sensor not detected");
+                }
                 LOGE_IF(res < 0, "HAL:PRESSURE update delay error");
             }
         }
