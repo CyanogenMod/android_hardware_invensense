@@ -376,8 +376,7 @@ int CompassSensor::inv_init_sysfs_attributes(void)
     sprintf(compassSysFs.compass_orient, "%s%s", sysfs_path, "/compass_matrix");
 #else
     sprintf(compassSysFs.compass_enable, "%s%s", sysfs_path, "/compass_enable");
-    sprintf(compassSysFs.compass_rate, "%s%s",
-            sysfs_path, "/sampling_frequency");
+    sprintf(compassSysFs.compass_rate, "%s%s", sysfs_path, "/compass_rate");
     sprintf(compassSysFs.compass_scale, "%s%s", sysfs_path, "/in_magn_scale");
     sprintf(compassSysFs.compass_orient, "%s%s", sysfs_path, "/compass_matrix");
 #endif

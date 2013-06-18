@@ -517,15 +517,21 @@ int inv_get_compass_disturbance(void) {
     return inv_data_builder.compass_disturbance;
 }
 /** Sets the accel bias.
-* @param[in] bias Accel bias, length 3. In HW units scaled by 2^16 in body frame
-* @param[in] accuracy Accuracy rating from 0 to 3, with 3 being most accurate.
+* @param[in] bias 
+*               Accel bias, length 3. In HW units (+/- 2 gee full scale assumed)
+                scaled by 2^16 in body frame.
+* @param[in] accuracy 
+*               Accuracy rating from 0 to 3, with 3 being most accurate.
 */
 void inv_set_accel_bias(const long *bias, int accuracy)
 {
     if (bias) {
-        if (memcmp(inv_data_builder.save.accel_bias, bias, sizeof(inv_data_builder.save.accel_bias))) {
-            memcpy(inv_data_builder.save.accel_bias, bias, sizeof(inv_data_builder.save.accel_bias));
-            inv_apply_calibration(&sensors.accel, inv_data_builder.save.accel_bias);
+        if (memcmp(inv_data_builder.save.accel_bias, bias, 
+                   sizeof(inv_data_builder.save.accel_bias))) {
+            memcpy(inv_data_builder.save.accel_bias, bias, 
+                   sizeof(inv_data_builder.save.accel_bias));
+            inv_apply_calibration(&sensors.accel, 
+                                  inv_data_builder.save.accel_bias);
         }
     }
     sensors.accel.accuracy = accuracy;
@@ -568,31 +574,42 @@ void inv_set_accel_bias_mask(const long *bias, int accuracy, int mask)
     inv_set_message(INV_MSG_NEW_AB_EVENT, INV_MSG_NEW_AB_EVENT, 0);
 }
 
-/** Sets the factory gyro bias
-* @param[in] factory Gyro bias in hardware units scaled by 2^16. In chip mounting frame.
-*            Length 3.
-*/
+/** 
+ *  Sets the factory gyro bias
+ *  @param[in] bias 
+ *               Gyro bias in hardware units (+/- 2000 dps full scale assumed) 
+ *               scaled by 2^16. In chip mounting frame. Length of 3.
+ */
 void inv_set_gyro_bias(const long *bias)
 {
-    if (bias != NULL) {
-        if (memcmp(inv_data_builder.save.factory_gyro_bias, bias, sizeof(inv_data_builder.save.factory_gyro_bias))) {
-            memcpy(inv_data_builder.save.factory_gyro_bias, bias, sizeof(inv_data_builder.save.factory_gyro_bias));
-        }
-        inv_set_message(INV_MSG_NEW_FGB_EVENT, INV_MSG_NEW_FGB_EVENT, 0);
+    if (!bias)
+        return;
+
+    if (memcmp(inv_data_builder.save.factory_gyro_bias, bias,
+               sizeof(inv_data_builder.save.factory_gyro_bias))) {
+        memcpy(inv_data_builder.save.factory_gyro_bias, bias,
+               sizeof(inv_data_builder.save.factory_gyro_bias));
     }
+    inv_set_message(INV_MSG_NEW_FGB_EVENT, INV_MSG_NEW_FGB_EVENT, 0);
 }
 
-/** Sets the mpl gyro bias
-* @param[in] bias Gyro bias in hardware units scaled by 2^16. In chip mounting frame.
-*            Length 3.
-* @param[in] accuracy Accuracy of bias. 0 = least accurate, 3 = most accurate.
-*/
+/** 
+ *  Sets the mpl gyro bias
+ *  @param[in] bias
+ *              Gyro bias in hardware units scaled by 2^16  (+/- 2000 dps full
+ *              scale assumed). In chip mounting frame. Length 3.
+ *  @param[in] accuracy
+ *              Accuracy of bias. 0 = least accurate, 3 = most accurate.
+ */
 void inv_set_mpl_gyro_bias(const long *bias, int accuracy)
 {
     if (bias != NULL) {
-        if (memcmp(inv_data_builder.save_mpl.gyro_bias, bias, sizeof(inv_data_builder.save_mpl.gyro_bias))) {
-            memcpy(inv_data_builder.save_mpl.gyro_bias, bias, sizeof(inv_data_builder.save_mpl.gyro_bias));
-            inv_apply_calibration(&sensors.gyro, inv_data_builder.save_mpl.gyro_bias);
+        if (memcmp(inv_data_builder.save_mpl.gyro_bias, bias, 
+                   sizeof(inv_data_builder.save_mpl.gyro_bias))) {
+            memcpy(inv_data_builder.save_mpl.gyro_bias, bias, 
+                   sizeof(inv_data_builder.save_mpl.gyro_bias));
+            inv_apply_calibration(&sensors.gyro,
+                                  inv_data_builder.save_mpl.gyro_bias);
         }
     }
     sensors.gyro.accuracy = accuracy;
@@ -633,7 +650,7 @@ int inv_get_gyro_bias_tc_set(void)
 /**
  *  Get the mpl gyro biases
  *  @param[in] bias
- *              Gyro factory bias.
+ *              Gyro calibrated bias.
  *              Length 3.
  */
 void inv_get_mpl_gyro_bias(long *bias, long *temp)
@@ -644,6 +661,19 @@ void inv_get_mpl_gyro_bias(long *bias, long *temp)
 
     if (temp != NULL)
         temp[0] = inv_data_builder.save.gyro_temp;
+}
+
+/** Gyro Bias in the form used by the DMP.
+* @param[out] bias Gyro Bias in the form used by the DMP. It is scaled appropriately
+*             and is in the body frame as needed. If this bias is applied in the DMP
+*             then any quaternion must have the flag INV_BIAS_APPLIED set if it is a
+*             3-axis quaternion, or INV_QUAT_6AXIS if it is a 6-axis quaternion
+*/
+void inv_get_gyro_bias_dmp_units(long *bias)
+{
+    if (bias == NULL)
+        return;
+    inv_convert_to_body_with_scale(sensors.gyro.orientation,  46850825L, inv_data_builder.save_mpl.gyro_bias, bias);
 }
 
 /* TODO: Add this information to inv_sensor_cal_t */
@@ -676,18 +706,18 @@ void inv_get_accel_bias(long *bias, long *temp)
 
 /**
  *  Record new accel data for use when inv_execute_on_data() is called
- *  @param[in]  accel accel data.
- *              Length 3.
- *              Calibrated data is in m/s^2 scaled by 2^16 in body frame.
- *              Raw data is in device units in chip mounting frame.
+ *  @param[in]  accel 
+ *                accel data, length 3.
+ *                Calibrated data is in m/s^2 scaled by 2^16 in body frame.
+ *                Raw data is in device units in chip mounting frame.
  *  @param[in]  status
- *              Lower 2 bits are the accuracy, with 0 being inaccurate, and 3
- *              being most accurate.
- *              The upper bit INV_CALIBRATED, is set if the data was calibrated
- *              outside MPL and it is not set if the data being passed is raw.
- *              Raw data should be in device units, typically in a 16-bit range.
+ *                Lower 2 bits are the accuracy, with 0 being inaccurate, and 3
+ *                being most accurate.
+ *                The upper bit INV_CALIBRATED, is set if the data was calibrated
+ *                outside MPL and it is not set if the data being passed is raw.
+ *                Raw data should be in device units, typically in a 16-bit range.
  *  @param[in]  timestamp
- *              Monotonic time stamp, for Android it's in nanoseconds.
+ *                Monotonic time stamp, for Android it's in nanoseconds.
  *  @return     Returns INV_SUCCESS if successful or an error code if not.
  */
 inv_error_t inv_build_accel(const long *accel, int status, inv_time_t timestamp)

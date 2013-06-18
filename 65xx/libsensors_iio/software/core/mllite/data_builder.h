@@ -4,17 +4,17 @@
     See included License.txt for License information.
  $
  */
-#include "mltypes.h"
-
 #ifndef INV_DATA_BUILDER_H__
 #define INV_DATA_BUILDER_H__
+
+#include <stdio.h>
+#include "mltypes.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Uncomment this flag to enable playback debug and record or playback scenarios
-// !! KEEP THIS FLAG OFF FOR RELEASE !!
 //#define INV_PLAYBACK_DBG
 
 /** This is a new sample of accel data */
@@ -169,36 +169,37 @@ typedef enum {
 #define INV_DB_SAVE_MPL_KEY (50001)
 
 struct inv_db_save_t {
-    /** Compass Bias in Chip Frame in Hardware units scaled by 2^16 */
+    /** compass Bias in chip frame, hardware units scaled by 2^16. */
     long compass_bias[3];
-    /** Gyro Factory Bias */
+    /** gyro factory bias in chip frame, hardware units scaled by 2^16,
+        +/- 2000 dps full scale. */
     long factory_gyro_bias[3];
-    /** Temperature when *gyro_bias was stored. */
+    /** temperature when factory_gyro_bias was stored. */
     long gyro_temp;
-    /** Flag to indicate temperature compensation that biases where stored. */
+    /** flag to indicate temperature compensation that biases where stored. */
     int gyro_bias_tc_set;
-    /** Accel Bias in Chip Frame in Hardware units scaled by 2^16 */
+    /** accel bias in chip frame, hardware units scaled by 2^16, 
+        +/- 2 gee full scale. */
     long accel_bias[3];
-    /** Temperature when accel bias was stored. */
+    /** temperature when accel bias was stored. */
     long accel_temp;
     long gyro_temp_slope[3];
-    /** Sensor Accuracy */
+    /** sensor accuracies */
     int gyro_accuracy;
     int accel_accuracy;
     int compass_accuracy;
 };
 
 struct inv_db_save_mpl_t {
-    /** Gyro Bias in Chip Frame in Hardware units scaled by 2^16 */
+    /** gyro bias in chip frame, hardware units scaled by 2^16, +/- 2000 dps
+        full scale */
     long gyro_bias[3];
 };
-
 
 /** Maximum number of data callbacks that are supported. Safe to increase if needed.*/
 #define INV_MAX_DATA_CB 20
 
 #ifdef INV_PLAYBACK_DBG
-#include <stdio.h>
 void inv_turn_on_data_logging(FILE *file);
 void inv_turn_off_data_logging();
 #endif
@@ -261,6 +262,7 @@ void inv_disable_compass_soft_iron_matrix(void);
 
 void inv_get_mpl_gyro_bias(long *bias, long *temp);
 void inv_get_gyro_bias(long *bias);
+void inv_get_gyro_bias_dmp_units(long *bias);
 void inv_get_accel_bias(long *bias, long *temp);
 
 void inv_gyro_was_turned_off(void);

@@ -151,6 +151,21 @@ static void verify_img(){
     printf("saving image Done\n");
 }
 
+static void inv_set_rate()
+{
+	int ret;
+
+	printf("set rate \n");
+	ret = write_sysfs_int_and_verify("accel_rate", dev_dir_name, 15);
+	ret = write_sysfs_int_and_verify("gyro_rate", dev_dir_name, 10);
+	ret = write_sysfs_int_and_verify("compass_rate", dev_dir_name, 5);
+	ret = write_sysfs_int_and_verify("pressure_rate", dev_dir_name, 5);
+	ret = write_sysfs_int_and_verify("ped_q_rate", dev_dir_name, 5);
+	ret = write_sysfs_int_and_verify("six_axes_q_rate", dev_dir_name, 5);
+	ret = write_sysfs_int_and_verify("three_axes_q_rate", dev_dir_name, 5);
+}
+
+
 static int setup_offset_and_bias()
 {
 	int ret;
@@ -243,10 +258,7 @@ static void setup_dmp(char *dev_path){
 		return;
 	ret = write_sysfs_int_and_verify("pedometer_int_on", sysfs_path, 0);
 	ret = write_sysfs_int_and_verify("pedometer_on", sysfs_path, 1);
-	ret = write_sysfs_int_and_verify("accel_pedometer_step_on", sysfs_path, 1);
-	ret = write_sysfs_int_and_verify("dmp_output_rate", sysfs_path, 200);
-	if (ret < 0)
-		return;
+
 	ret = write_sysfs_int_and_verify("dmp_event_int_on", sysfs_path, 1);
 	if (ret < 0)
 		return;
@@ -315,10 +327,16 @@ static void *get_dmp_event(void *param) {
 
 static int enable_gyro(int on){
 	int ret;
-	gyro_data_is_enabled = on;
 	ret = write_sysfs_int_and_verify("gyro_enable", dev_dir_name, on);
 	if (ret < 0)
 		printf("write gyro_enable failed\n");
+
+	return ret;
+}
+
+static int enable_gyro_output(int on){
+	int ret;
+	gyro_data_is_enabled = on;
 	ret = write_sysfs_int_and_verify("gyro_fifo_enable", dev_dir_name, on);
 	if (ret < 0)
 		printf("write gyro_fifo_enable failed\n");
@@ -361,6 +379,21 @@ static int enable_quaternion(int on) {
 
 	return ret;
 }
+static int enable_step_detector(int on) {
+	int ret;
+
+	ret = write_sysfs_int_and_verify("step_detector_on", dev_dir_name, on);
+	if (ret < 0)
+		printf("write step detector on failed\n");
+}
+static int enable_step_indicator(int on) {
+	int ret;
+
+	ret = write_sysfs_int_and_verify("step_indicator_on", dev_dir_name, on);
+	if (ret < 0)
+		printf("write step indicator on failed\n");
+}
+
 static int enable_accel(int on){
 	int ret;
 	accel_data_is_enabled = on;
@@ -417,14 +450,6 @@ static int write_dmp_event(int on) {
 		printf("write dmp_event_int_on failed\n");
 	return 0;
 }
-static int write_dmp_output_rate(int rate){
-	int ret;
-	final_output_rate = rate;
-	ret = write_sysfs_int_and_verify("dmp_output_rate", dev_dir_name, rate);
-	if (ret < 0)
-		printf("write dmp_output_rate failed\n");
-	return 0;
-}
 
 static void random_delay(){
 	int i;
@@ -445,6 +470,8 @@ static void random_delay(){
 static void dmp_event_control(on){
 	int ret;
 
+	ret = 0;
+
 	//ret = write_sysfs_int_and_verify("tap_on", dev_dir_name, on);
 	ret = write_sysfs_int_and_verify("display_orientation_on", dev_dir_name, 1);
 	if (ret < 0)
@@ -452,9 +479,11 @@ static void dmp_event_control(on){
 	ret = write_sysfs_int_and_verify("smd_enable", dev_dir_name, 1);
 	if (ret < 0)
 		return;
+	inv_set_rate();
 
-	ret = write_sysfs_int_and_verify("batchmode_wake_fifo_full_on", dev_dir_name, 1);
-	ret = write_sysfs_int_and_verify("batchmode_timeout", dev_dir_name, 1000);
+	//ret = write_sysfs_int_and_verify("batchmode_wake_fifo_full_on", dev_dir_name, 1);
+	ret = write_sysfs_int_and_verify("batchmode_timeout", dev_dir_name, 5000);
+	//ret = write_sysfs_int_and_verify("batchmode_timeout", dev_dir_name, 0);
 	//ret = write_sysfs_int_and_verify("smd_delay_threshold", dev_dir_name, 10);
 	if (ret < 0)
 		return;
@@ -477,23 +506,35 @@ void enable_motion(int on) {
 	}
 }
 bool g, a;
+static int counter = 0;
 static unsigned char data_rate[] = {5, 10, 15, 50, 100, 200};
 static int run_enable_sequence()
 {
-	bool g, a;
+	bool g, a, out;
 
+	counter++;
 	g = rand()%2;
 	a = rand()%2;
 	if (!g && !a)
 		a = true;
 
-	g = true;
-	a = true;
+	//g = true;
+	//a = true;
 	/*disable the master enable */
 	enable_enable(0);
 	if(g) {
 		enable_gyro(1);
-		enable_quaternion(1);
+		if (rand()%2) {
+			out = rand()%2;
+			enable_quaternion(out);
+			enable_gyro_output(!out);
+		} else {
+			enable_quaternion(1);
+			enable_gyro_output(1);
+		}
+	//	enable_quaternion(0);
+	//	enable_gyro_output(0);
+
 	} else {
 		enable_gyro(0);
 		enable_quaternion(0);
@@ -501,8 +542,9 @@ static int run_enable_sequence()
 	if(a) {
 		enable_accel(1);
 		enable_accel_output(1);
+	//	enable_accel_output(0);
 	} else {
-		enable_accel(0);
+		enable_accel(1);
 		enable_accel_output(0);
 	}
 	if (has_compass) {
@@ -510,17 +552,24 @@ static int run_enable_sequence()
 			enable_compass(1);
 		else
 			enable_compass(0);
+		enable_compass(counter%2);
+		//enable_compass(0);
 	}
 	if (has_pressure) {
 		if(rand()%2)
 			enable_pressure(1);
 		else
 			enable_pressure(0);
+		enable_pressure(counter%3);
+		//enable_pressure(0);
 	}
+	enable_step_detector(1);
+	enable_step_indicator(1);
+	//enable_step_detector(0);
+	//enable_step_indicator(0);
 
 	write_dmp_event(0);
 
-	write_dmp_output_rate(data_rate[rand()%6]);
 	//enable_motion(0);
 	if (accel_engine_is_on)
 		dmp_event_control(1);
@@ -582,24 +631,25 @@ void get_sensor_data(char *d, short *sensor)
 	for (i = 0; i < 3; i++)
 		sensor[i] = *(short *)(d + 2 + i * 2);
 }
+
 static void *read_data(void *param)
 {
 	char *buffer_access;
-	char data[100];
+	char data[1048], *dptr, tmp[24];
 	short sensor[3];
-	int q[3];
-	int ret, fp, scan_size, read_size;
+	int q[3], i, ind, left_over_size, buf_size;
+	int ret, fp,read_size;
 	unsigned short hdr;
+	bool done_flag;
 
 #define PRESSURE_HDR             0x8000
 #define ACCEL_HDR                0x4000
-#define ACCEL_STEP_HDR           0x4001
 #define GYRO_HDR                 0x2000
 #define COMPASS_HDR              0x1000
 #define LPQUAT_HDR               0x0800
 #define SIXQUAT_HDR              0x0400
 #define PEDQUAT_HDR              0x0200
-#define PEDQUAT_STEP_HDR         0x0201
+#define STEP_DETECTOR_HDR        0x0100
 
 	printf("read_data Thread: %s\n", dev_dir_name);
 	ret = asprintf(&scan_el_dir, FORMAT_SCAN_ELEMENTS_DIR, dev_dir_name);
@@ -615,6 +665,8 @@ static void *read_data(void *param)
 		ret = -errno;
 		goto error_open_buffer_access;
 	}
+	ind = 0;
+	
 	while(1) {
 		struct pollfd pfd = {
 			.fd = fp,
@@ -622,73 +674,113 @@ static void *read_data(void *param)
 		};
 		poll(&pfd, 1, -1);
 
-		pthread_mutex_lock(&data_switch_lock);
-		scan_size = 8;
-		pthread_mutex_unlock(&data_switch_lock);
+		if (left_over_size > 0)
+			memcpy(data, tmp, left_over_size);
+		dptr = data + left_over_size;
 
-		read_size = read(fp,  data, scan_size);
-		if (read_size < 0) {
+		read_size = read(fp,  dptr, 1024);
+		printf("readsize=%d, left_over_size=%d\n", read_size, left_over_size);
+		if (read_size <= 0) {
 			printf("Wrong size=%d\n", read_size);
 			pthread_mutex_unlock(&data_switch_lock);
 			continue;
 		}
-		hdr = *((short *)(data));
-		switch (hdr) {
-		case PRESSURE_HDR:
-			get_sensor_data(data, sensor);
-			read(fp,  data, 8);
-			printf("PRESSURE:%d, %lld\n", (sensor[1] << 16) + (unsigned short)sensor[2], *(long long *)data);
-			break;
-		case ACCEL_HDR:
-			get_sensor_data(data, sensor);
-			read(fp,  data, 8);
-			printf("A:%d, %d, %d, %lld\n", sensor[0], sensor[1], sensor[2], *(long long *)data);
-			break;
-		case ACCEL_STEP_HDR:
-			get_sensor_data(data, sensor);
-			read(fp,  data, 8);
-			printf("A_S:%d, %d, %d, %lld\n", sensor[0], sensor[1], sensor[2], *(long long *)data);
-			break;
-		case GYRO_HDR:
-			get_sensor_data(data, sensor);
-			read(fp,  data, 8);
-			printf("G:%d, %d, %d, %lld\n", sensor[0], sensor[1], sensor[2], *(long long *)data);
-			break;
-		case COMPASS_HDR:
-			get_sensor_data(data, sensor);
-			read(fp,  data, 8);
-			printf("M:%d, %d, %d, %lld\n", sensor[0], sensor[1], sensor[2], *(long long *)data);
-			break;
-		case PEDQUAT_HDR:
-			get_sensor_data(data, sensor);
-			read(fp,  data, 8);
-			printf("PED:%d, %d, %d, %lld\n", sensor[0], sensor[1], sensor[2], *(long long *)data);
-			break;
-		case PEDQUAT_STEP_HDR:
-			get_sensor_data(data, sensor);
-			read(fp,  data, 8);
-			printf("PED_S:%d, %d, %d, %lld\n", sensor[0], sensor[1], sensor[2], *(long long *)data);
-			break;
-		case LPQUAT_HDR:
-			q[0] = *(int *)(data + 4);
-			read(fp,  data, 8);
-			q[1] = *(int *)(data);
-			q[2] = *(int *)(data + 4);
-			read(fp,  data, 8);
-			printf("LPQ:%d, %d, %d, %lld\n", q[0], q[1], q[2], *(long long *)data);
-			break;
-		case SIXQUAT_HDR:
-			q[0] = *(int *)(data + 4);
-			read(fp,  data, 8);
-			q[1] = *(int *)(data);
-			q[2] = *(int *)(data + 4);
-			read(fp,  data, 8);
-			printf("SIXQ:%d, %d, %d, %lld\n", q[0], q[1], q[2], *(long long *)data);
-			break;
-		default:
-			printf("unknown=%x\n", hdr);
-			break;
+		ind = read_size + left_over_size;
+		dptr = data;
+		printf("ind=%d\n", ind);
+		buf_size = ind - (dptr - data);
+		done_flag = false;
+		while ((buf_size > 0) && (!done_flag)) {
+			hdr = *((short *)(dptr));
+			if (hdr & 1)
+				printf("STEP$$$$$$$$$$$$$$$=%x\n", hdr);
+		
+			switch (hdr & (~1)) {
+			case PRESSURE_HDR:
+				if (buf_size >= 16) {
+					get_sensor_data(dptr, sensor);
+					dptr += 8;
+					printf("PRESSURE:%d, %lld\n", (sensor[1] << 16) + (unsigned short)sensor[2],  *(long long *)dptr);
+				} else
+					done_flag = true;
+				break;
+			case ACCEL_HDR:
+				if (buf_size >= 16) {
+					get_sensor_data(dptr, sensor);
+					dptr += 8;
+					printf("A:%d, %d, %d,  %lld\n", sensor[0], sensor[1], sensor[2],   *(long long *)dptr);
+				} else
+					done_flag = true;
+				break;
+			case GYRO_HDR:
+				if (buf_size >= 16) {
+					get_sensor_data(dptr, sensor);
+					dptr += 8;
+					printf("G:%d, %d, %d,  %lld\n", sensor[0], sensor[1], sensor[2],   *(long long *)dptr);
+				} else
+					done_flag = true;
+				break;
+			case COMPASS_HDR:
+				if (buf_size >= 16) {
+					get_sensor_data(dptr, sensor);
+					dptr += 8;
+					printf("M:%d, %d, %d,  %lld\n", sensor[0], sensor[1], sensor[2],   *(long long *)dptr);
+				} else
+					done_flag = true;
+				break;
+			case PEDQUAT_HDR:
+				if (buf_size >= 16) {
+					get_sensor_data(dptr, sensor);
+					dptr += 8;
+					printf("PED:%d, %d, %d,  %lld\n", sensor[0], sensor[1], sensor[2],   *(long long *)dptr);
+				}  else
+					done_flag = true;
+				break;
+			case LPQUAT_HDR:
+				if (buf_size >= 24) {
+					q[0] = *(int *)(dptr + 4);
+					dptr += 8;
+					q[1] = *(int *)(dptr);
+					q[2] = *(int *)(dptr + 4);
+					dptr += 8;
+					printf("LPQ:%d, %d, %d,  %lld\n", q[0], q[1], q[2],   *(long long *)dptr);
+				}  else
+					done_flag = true;
+				break;
+			case SIXQUAT_HDR:
+				if (buf_size >= 24) {
+					q[0] = *(int *)(dptr + 4);
+					dptr += 8;
+					q[1] = *(int *)(dptr);
+					q[2] = *(int *)(dptr + 4);
+					dptr += 8;
+					printf("SIXQ:%d, %d, %d,  %lld\n", q[0], q[1], q[2],   *(long long *)dptr);
+				}  else
+					done_flag = true;
+				break;
+			case STEP_DETECTOR_HDR:
+				if (buf_size >= 16) {
+					printf("STEP DETECTOR ");
+					dptr += 8;
+					printf(" %lld\n", *(long long *)dptr);
+				}  else
+					done_flag = true;
+
+				break;
+			default:
+				printf("unknown\n");
+				for (i = 0; i < 8; i++)
+					printf("%x ", dptr[i]);
+				printf("\n");
+				break;
+			}
+			if (!done_flag)
+				dptr += 8;
+			buf_size = ind - (dptr - data);
 		}
+		if (ind - (dptr - data) > 0)
+			memcpy(tmp, dptr, ind - (dptr - data));
+		left_over_size = ind - (dptr - data);
 	}
 	close(fp);
 

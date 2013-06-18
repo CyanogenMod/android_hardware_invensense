@@ -33,6 +33,14 @@
 #include "sensors.h"
 #include "MPLSensor.h"
 
+/* 
+ * Vendor-defined Accel Load Calibration File Method 
+ * @param[out] Accel bias, length 3.  In HW units scaled by 2^16 in body frame
+ * @return '0' for a successful load, '1' otherwise
+ * example: int AccelLoadConfig(long* offset);
+ * End of Vendor-defined Accel Load Cal Method 
+ */
+
 /*****************************************************************************/
 /* The SENSORS Module */
 
@@ -41,13 +49,6 @@
 #else
 #define LOCAL_SENSORS MPLSensor::NumSensors
 #endif
-
-/* Vendor-defined Accel Load Calibration File Method 
-* @param[out] Accel bias, length 3.  In HW units scaled by 2^16 in body frame
-* @return '0' for a successful load, '1' otherwise
-* example: int AccelLoadConfig(long* offset);
-* End of Vendor-defined Accel Load Cal Method 
-*/
 
 static struct sensor_t sSensorList[LOCAL_SENSORS];
 static int sensors = (sizeof(sSensorList) / sizeof(sensor_t));
@@ -91,8 +92,6 @@ struct sensors_poll_context_t {
     int pollEvents(sensors_event_t* data, int count);
     int query(int what, int *value);
     int batch(int handle, int flags, int64_t period_ns, int64_t timeout);
-    
-
 
 private:
     enum {
@@ -108,6 +107,10 @@ private:
     struct pollfd mPollFds[numFds];
     SensorBase *mSensor;
     CompassSensor *mCompassSensor;
+
+    static const size_t wake = numSensorDrivers;
+    static const char WAKE_MESSAGE = 'W';
+    int mWritePipeFd;
 };
 
 /******************************************************************************/
@@ -122,8 +125,8 @@ sensors_poll_context_t::sensors_poll_context_t() {
    /* For Vendor-defined Accel Calibration File Load
     * Use the Following Constructor and Pass Your Load Cal File Function
     * 
-	* MPLSensor *mplSensor = new MPLSensor(mCompassSensor, AccelLoadConfig);
-	*/
+    * MPLSensor *mplSensor = new MPLSensor(mCompassSensor, AccelLoadConfig);
+    */
 
     // setup the callback object for handing mpl callbacks
     setCallbackObject(mplSensor);
@@ -159,6 +162,8 @@ sensors_poll_context_t::sensors_poll_context_t() {
     LOGE_IF(result<0, "error creating wake pipe (%s)", strerror(errno));
     fcntl(wakeFds[0], F_SETFL, O_NONBLOCK);
     fcntl(wakeFds[1], F_SETFL, O_NONBLOCK);
+    mWritePipeFd = wakeFds[1];
+
     mPollFds[numSensorDrivers].fd = wakeFds[0];
     mPollFds[numSensorDrivers].events = POLLIN;
     mPollFds[numSensorDrivers].revents = 0;
@@ -171,11 +176,21 @@ sensors_poll_context_t::~sensors_poll_context_t() {
     for (int i = 0; i < numSensorDrivers; i++) {
         close(mPollFds[i].fd);
     }
+    close(mWritePipeFd);
 }
 
 int sensors_poll_context_t::activate(int handle, int enabled) {
-    FUNC_LOG;  
-    return mSensor->enable(handle, enabled);
+    FUNC_LOG;
+
+    int err;
+    err = mSensor->enable(handle, enabled);
+    if (!err) {
+        const char wakeMessage(WAKE_MESSAGE);
+        int result = write(mWritePipeFd, &wakeMessage, 1);
+        LOGE_IF(result < 0, 
+                "error sending wake message (%s)", strerror(errno));
+    }
+    return err;
 }
 
 int sensors_poll_context_t::setDelay(int handle, int64_t ns)
@@ -195,10 +210,11 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
 
     // look for new events
     nb = poll(mPollFds, numFds, polltime);
-    LOGV_IF(0, "poll nb=%d, count=%d, pt=%d", nb, count, polltime);
+    LOGI_IF(0, "poll nb=%d, count=%d, pt=%d", nb, count, polltime);
     if (nb > 0) {
         for (int i = 0; count && i < numSensorDrivers; i++) {
-            if (mPollFds[i].revents & (POLLIN | POLLPRI)) {
+            if (mPollFds[i].revents & (POLLIN | POLLPRI)) {               
+                LOGI_IF(0, "poll found=%d", i);
                 nb = 0;
                 if (i == mpl) {
                     ((MPLSensor*) mSensor)->buildMpuEvent();
@@ -230,8 +246,8 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
                     data += nb;
                 }
                 nb = ((MPLSensor*) mSensor)->readEvents(data, count);
-                LOGI_IF(0, "sensors_mpl:readEvents() - nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, data->data[0]=%f,",
-                             nb, count, nbEvents, data->timestamp, data->data[0]);
+                LOGI_IF(0, "sensors_mpl:readEvents() - i=%d, nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, data->data[0]=%f,",
+                             i, nb, count, nbEvents, data->timestamp, data->data[0]);
                 if (nb > 0) {
                     count -= nb;
                     nbEvents += nb;

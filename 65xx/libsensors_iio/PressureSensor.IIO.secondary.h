@@ -57,7 +57,8 @@ private:
     char sensor_name[200];
     
     struct sysfs_attrbs {
-       char *pressure_enable;    
+       char *pressure_enable;
+       char *pressure_rate;    
     } pressureSysFs;
 
     int pressure_fd; 

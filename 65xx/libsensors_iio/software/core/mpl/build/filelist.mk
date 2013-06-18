@@ -1,8 +1,5 @@
 #### filelist.mk for mpl ####
 
-# headers only
-HEADERS := $(MPL_DIR)/mpu.h
-
 # headers for sources
 HEADERS := $(MPL_DIR)/fast_no_motion.h
 HEADERS += $(MPL_DIR)/fusion_9axis.h
@@ -21,7 +18,6 @@ HEADERS += $(MPL_DIR)/compass_bias_w_gyro.h
 HEADERS += $(MPL_DIR)/heading_from_gyro.h
 HEADERS += $(MPL_DIR)/compass_fit.h
 HEADERS += $(MPL_DIR)/quat_accuracy_monitor.h
-#HEADERS += $(MPL_DIR)/auto_calibration.h
 
 # sources
 SOURCES := $(MPL_DIR)/fast_no_motion.c
@@ -38,7 +34,6 @@ SOURCES += $(MPL_DIR)/compass_bias_w_gyro.c
 SOURCES += $(MPL_DIR)/heading_from_gyro.c
 SOURCES += $(MPL_DIR)/compass_fit.c
 SOURCES += $(MPL_DIR)/quat_accuracy_monitor.c
-#SOURCES += $(MPL_DIR)/auto_calibration.c
 
 INV_SOURCES += $(SOURCES)
 

@@ -1,5 +1,5 @@
 /**
- *  Self Test application for Invensense's MPU6050/MPU6500/MPU9150.
+ *  Self Test application for Invensense's MPU6xxx/MPU9xxx.
  */
 
 #include <unistd.h>
@@ -61,11 +61,13 @@ struct sysfs_attrbs {
     char *gyro_x_bias;
     char *gyro_y_bias;
     char *gyro_z_bias;
+    char *gyro_scale;
     char *accel_enable;
     int accel_enable_value;
     char *accel_x_bias;
     char *accel_y_bias;
     char *accel_z_bias;
+    char *accel_scale;
     char *compass_enable;
     int compass_enable_value;
 } mpu;
@@ -187,11 +189,13 @@ int inv_init_sysfs_attributes(void)
     sprintf(mpu.gyro_x_bias, "%s%s", sysfs_path, "/in_anglvel_x_calibbias");
     sprintf(mpu.gyro_y_bias, "%s%s", sysfs_path, "/in_anglvel_y_calibbias");
     sprintf(mpu.gyro_z_bias, "%s%s", sysfs_path, "/in_anglvel_z_calibbias");
+    sprintf(mpu.gyro_scale,  "%s%s", sysfs_path, "/in_anglvel_self_test_scale");
 
     sprintf(mpu.accel_enable, "%s%s", sysfs_path, "/accel_enable");
     sprintf(mpu.accel_x_bias, "%s%s", sysfs_path, "/in_accel_x_calibbias");
     sprintf(mpu.accel_y_bias, "%s%s", sysfs_path, "/in_accel_y_calibbias");
     sprintf(mpu.accel_z_bias, "%s%s", sysfs_path, "/in_accel_z_calibbias");
+    sprintf(mpu.accel_scale,  "%s%s", sysfs_path, "/in_accel_self_test_scale");
 
     sprintf(mpu.compass_enable, "%s%s", sysfs_path, "/compass_enable");
 
@@ -209,18 +213,19 @@ void print_cal_file_content(struct inv_db_save_t *data)
 {
     printf("------------------------------\n");
     printf("-- Calibration file content --\n");
-    printf("   compass_bias[3]  = %+ld %+ld %+ld\n",
+    printf("   compass_bias[3]      = %+ld %+ld %+ld\n",
            data->compass_bias[0], data->compass_bias[1], data->compass_bias[2]);
-    printf("   gyro_bias[3]     = %+ld %+ld %+ld\n",
-           data->factory_gyro_bias[0], data->factory_gyro_bias[1], data->factory_gyro_bias[2]);
-    printf("   gyro_temp        = %+ld\n", data->gyro_temp);
-    printf("   gyro_bias_tc_set = %+d\n", data->gyro_bias_tc_set);
-    printf("   accel_bias[3]    = %+ld %+ld %+ld\n",
+    printf("   factory_gyro_bias[3] = %+ld %+ld %+ld\n",
+           data->factory_gyro_bias[0], data->factory_gyro_bias[1], 
+           data->factory_gyro_bias[2]);
+    printf("   gyro_temp            = %+ld\n", data->gyro_temp);
+    printf("   gyro_bias_tc_set     = %+d\n", data->gyro_bias_tc_set);
+    printf("   accel_bias[3]        = %+ld %+ld %+ld\n",
            data->accel_bias[0], data->accel_bias[1], data->accel_bias[2]);
-    printf("   accel_temp       = %+ld\n", data->accel_temp);
-    printf("   gyro_accuracy    = %d\n", data->gyro_accuracy);
-    printf("   accel_accuracy   = %d\n", data->accel_accuracy);
-    printf("   compass_accuracy = %d\n", data->compass_accuracy);
+    printf("   accel_temp           = %+ld\n", data->accel_temp);
+    printf("   gyro_accuracy        = %d\n", data->gyro_accuracy);
+    printf("   accel_accuracy       = %d\n", data->accel_accuracy);
+    printf("   compass_accuracy     = %d\n", data->compass_accuracy);
     printf("------------------------------\n");
 }
 
@@ -233,7 +238,10 @@ int main(int argc, char **argv)
     int self_test_status = 0;
     inv_error_t result;
     bias_dtype gyro_bias[3];
+    bias_dtype gyro_scale;
     bias_dtype accel_bias[3];
+    bias_dtype accel_scale;
+    int scale_ratio;
     size_t packet_sz;
     int axis_sign = 1;
     unsigned char *buffer;
@@ -371,19 +379,21 @@ int main(int argc, char **argv)
     fclose(fptr);
 
     if (self_test_status & GYRO_PASS_STATUS_BIT) {
-       // Read Gyro Bias
-       if (read_sysfs_int(mpu.gyro_x_bias, &gyro_bias[0].i) < 0 ||
-           read_sysfs_int(mpu.gyro_y_bias, &gyro_bias[1].i) < 0 ||
-           read_sysfs_int(mpu.gyro_z_bias, &gyro_bias[2].i) < 0) {
-           memset(gyro_bias, 0, sizeof(gyro_bias));
-           printf("Self-Test:Failed to read Gyro bias\n");
-       } else {
-           save_data.gyro_accuracy = 3;
+        // Read Gyro Bias
+        if (read_sysfs_int(mpu.gyro_x_bias, &gyro_bias[0].i) < 0 ||
+            read_sysfs_int(mpu.gyro_y_bias, &gyro_bias[1].i) < 0 ||
+            read_sysfs_int(mpu.gyro_z_bias, &gyro_bias[2].i) < 0 ||
+            read_sysfs_int(mpu.gyro_scale, &gyro_scale.i) < 0) {
+            memset(gyro_bias, 0, sizeof(gyro_bias));
+            gyro_scale.i = 0;
+            printf("Self-Test:Failed to read Gyro bias\n");
+        } else {
+            save_data.gyro_accuracy = 3;
 #ifdef DEBUG_PRINT
-           printf("Self-Test:Gyro bias[0..2] = [%d %d %d]\n", 
+            printf("Self-Test:Gyro bias[0..2] = [%d %d %d]\n", 
                    gyro_bias[0].i, gyro_bias[1].i, gyro_bias[2].i);
 #endif
-       }
+        }
     } else {
         printf("Self-Test:Failed Gyro self-test\n");
     }
@@ -392,8 +402,10 @@ int main(int argc, char **argv)
         // Read Accel Bias
         if (read_sysfs_int(mpu.accel_x_bias, &accel_bias[0].i) < 0 ||
             read_sysfs_int(mpu.accel_y_bias, &accel_bias[1].i) < 0 ||
-            read_sysfs_int(mpu.accel_z_bias, &accel_bias[2].i) < 0) {
+            read_sysfs_int(mpu.accel_z_bias, &accel_bias[2].i) < 0 ||
+            read_sysfs_int(mpu.accel_scale, &accel_scale.i) < 0) {
             memset(accel_bias, 0, sizeof(accel_bias));
+            accel_scale.i = 0;
             printf("Self-Test:Failed to read Accel bias\n");
         } else {
             save_data.accel_accuracy = 3;
@@ -422,11 +434,21 @@ int main(int argc, char **argv)
         printf("Self-Test:ERR-Couldn't read temperature\n");
     }
 
-    // When we read gyro bias, the bias is in raw units scaled by 1000.
-    // We store the bias in raw units scaled by 2^16
-    save_data.factory_gyro_bias[0] = (long)(gyro_bias[0].l * 65536.f / 8000.f);
-    save_data.factory_gyro_bias[1] = (long)(gyro_bias[1].l * 65536.f / 8000.f);
-    save_data.factory_gyro_bias[2] = (long)(gyro_bias[2].l * 65536.f / 8000.f);
+    /*
+        When we read gyro bias from sysfs, the bias is in the raw units scaled by 
+        1000 at the full scale used during self-test 
+        (in_anglvel_self_test_scale).
+        We store the biases in raw units (+/- 2000 dps full scale assumed) 
+        scaled by 2^16 therefore the gyro_bias[] have to be divided by the 
+        ratio of 2000 / gyro_scale to comply.
+    */
+    scale_ratio = 2000 / gyro_scale.i;
+    save_data.factory_gyro_bias[0] = 
+                        (long)(gyro_bias[0].l / 1000.f * 65536.f / scale_ratio);
+    save_data.factory_gyro_bias[1] = 
+                        (long)(gyro_bias[1].l / 1000.f * 65536.f / scale_ratio);
+    save_data.factory_gyro_bias[2] = 
+                        (long)(gyro_bias[2].l / 1000.f * 65536.f / scale_ratio);
 
     // Save temperature @ time stored.
     //  Temperature is in degrees Celsius scaled by 2^16
@@ -449,9 +471,21 @@ int main(int argc, char **argv)
     }
 
     // Convert scaling from raw units scaled by 1000 to raw scaled by 2^16
-    save_data.accel_bias[0] = (long)(accel_bias[0].l * 65536.f / 1000.f);
-    save_data.accel_bias[1] = (long)(accel_bias[1].l * 65536.f / 1000.f);
-    save_data.accel_bias[2] = (long)(accel_bias[2].l * 65536.f / 1000.f);
+    /*
+        When we read accel bias from sysfs, the bias is in the raw units scaled
+        by 1000 at the full scale used during self-test 
+        (in_accel_self_test_scale).
+        We store the biases in raw units (+/- 2 gee full scale assumed) 
+        scaled by 2^16 therefore the accel_bias[] have to be multipled by the 
+        ratio of accel_scale / 2 to comply.
+    */
+    scale_ratio = accel_scale.i / 2;
+    save_data.accel_bias[0] = 
+                    (long)(accel_bias[0].l / 1000.f * 65536.f * scale_ratio);
+    save_data.accel_bias[1] = 
+                    (long)(accel_bias[1].l / 1000.f * 65536.f * scale_ratio);
+    save_data.accel_bias[2] = 
+                    (long)(accel_bias[2].l / 1000.f * 65536.f * scale_ratio);
 
 #ifdef DEBUG_PRINT
     printf("Self-Test:Saved Accel bias[0..2] = [%ld %ld %ld]\n",
@@ -459,9 +493,11 @@ int main(int argc, char **argv)
            save_data.accel_bias[2]);
 #endif
 
-    // Remove gravity, gravity in raw units should be 16384 = 2^14 for a 2g
-    //  setting. The data has been saved in Hw units scaled to 2^16,
-    //  so gravity needs to scale up accordingly.
+    /*
+        Remove gravity, gravity in raw units should be 16384 = 2^14 for a +/- 
+        2 gee setting. The data has been saved in Hw units scaled to 2^16,
+        so gravity needs to scale up accordingly.
+    */
     long gravity = axis_sign * 16384L * 65536L;
 #ifdef DEBUG_PRINT
     printf("Self-Test:Gravity = %ld\n", gravity);

@@ -98,7 +98,7 @@ include $(BUILD_SHARED_LIBRARY)
 # Build a temporary HAL that links the InvenSense .so
 include $(CLEAR_VARS)
 ifeq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
-ifneq ($(filter hammerhead manta grouper tilapia, $(TARGET_DEVICE)),)
+ifneq ($(filter manta grouper tilapia, $(TARGET_DEVICE)),)
 #LOCAL_MODULE := sensors.invensense
 else
 LOCAL_MODULE := sensors.${TARGET_PRODUCT}
