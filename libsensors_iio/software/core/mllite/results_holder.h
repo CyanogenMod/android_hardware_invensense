@@ -70,6 +70,10 @@ inv_error_t inv_get_linear_accel_float(float *data);
 void inv_set_heading_confidence_interval(float ci);
 float inv_get_heading_confidence_interval(void);
 
+int inv_got_accel_bias();
+void inv_set_accel_bias_found(int state);
+
+
 #ifdef __cplusplus
 }
 #endif

@@ -18,6 +18,8 @@
 #undef MPL_LOG_NDEBUG
 #define MPL_LOG_NDEBUG 0 /* Use 0 to turn on MPL_LOGV output */
 
+#include <string.h>
+
 #include "ml_math_func.h"
 #include "data_builder.h"
 #include "mlmath.h"
@@ -429,7 +431,7 @@ void inv_apply_calibration(struct inv_single_sensor_t *sensor, const long *bias)
     raw32[1] = (long)sensor->raw[1] << 15;
     raw32[2] = (long)sensor->raw[2] << 15;
 
-    inv_convert_to_body_with_scale(sensor->orientation, sensor->sensitivity << 1, raw32, sensor->raw_data);
+    inv_convert_to_body_with_scale(sensor->orientation, sensor->sensitivity << 1, raw32, sensor->raw_scaled);
 
     raw32[0] -= bias[0] >> 1;
     raw32[1] -= bias[1] >> 1;
@@ -490,6 +492,16 @@ void inv_set_accel_bias(const long *bias, int accuracy)
     inv_set_message(INV_MSG_NEW_AB_EVENT, INV_MSG_NEW_AB_EVENT, 0);
 }
 
+/** Sets the accel accuracy.
+* @param[in] accuracy Accuracy rating from 0 to 3, with 3 being most accurate.
+*/
+void inv_set_accel_accuracy(int accuracy)
+{
+    sensors.accel.accuracy = accuracy;
+    inv_data_builder.save.accel_accuracy = accuracy;
+    inv_set_message(INV_MSG_NEW_AB_EVENT, INV_MSG_NEW_AB_EVENT, 0);
+}
+
 /** Sets the accel bias with control over which axis.
 * @param[in] bias Accel bias, length 3. In HW units scaled by 2^16 in body frame
 * @param[in] accuracy Accuracy rating from 0 to 3, with 3 being most accurate.
@@ -512,6 +524,7 @@ void inv_set_accel_bias_mask(const long *bias, int accuracy, int mask)
     }
     sensors.accel.accuracy = accuracy;
     inv_data_builder.save.accel_accuracy = accuracy;
+    inv_set_message(INV_MSG_NEW_AB_EVENT, INV_MSG_NEW_AB_EVENT, 0);
 }
 
 
@@ -1010,7 +1023,7 @@ void inv_get_gyro_set(long *data, int8_t *accuracy, inv_time_t *timestamp)
 */
 void inv_get_gyro_set_raw(long *data, int8_t *accuracy, inv_time_t *timestamp)
 {
-    memcpy(data, sensors.gyro.raw_data, sizeof(sensors.gyro.raw_data));
+    memcpy(data, sensors.gyro.raw_scaled, sizeof(sensors.gyro.raw_scaled));
     if (timestamp != NULL) {
         *timestamp = sensors.gyro.timestamp;
     }

@@ -35,8 +35,8 @@
 
 #define COMPASS_MAX_SYSFS_ATTRB sizeof(compassSysFs) / sizeof(char*)
 
-#if defined COMPASS_YAS530
-#   warning "Invensense compass cal with YAS530 IIO on primary bus"
+#if defined COMPASS_YAS53x
+#   warning "Invensense compass cal with YAS53x IIO on secondary bus"
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_YAS530"
 #elif defined COMPASS_AK8975
@@ -143,22 +143,12 @@ int CompassSensor::enable(int32_t handle, int en)
     mEnable = en;
     int res;
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
-            en, compassSysFs.compass_enable, getTimestamp());
     res = write_sysfs_int(compassSysFs.compass_enable, en);
     LOGE_IF(res < 0, "HAL:enable compass failed");
 
     if (en) {
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
-                en, compassSysFs.compass_x_fifo_enable, getTimestamp());
         res = write_sysfs_int(compassSysFs.compass_x_fifo_enable, en);
-
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
-                en, compassSysFs.compass_y_fifo_enable, getTimestamp());
         res = write_sysfs_int(compassSysFs.compass_y_fifo_enable, en);
-
-        LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)", 
-                en, compassSysFs.compass_z_fifo_enable, getTimestamp());
         res = write_sysfs_int(compassSysFs.compass_z_fifo_enable, en);
     }
 
@@ -313,10 +303,10 @@ void CompassSensor::fillList(struct sensor_t *list)
             return;
         }
         if(!strcmp(compass, "INV_YAS530")) {
-            list->maxRange = COMPASS_YAS530_RANGE;
-            list->resolution = COMPASS_YAS530_RESOLUTION;
-            list->power = COMPASS_YAS530_POWER;
-            list->minDelay = COMPASS_YAS530_MINDELAY;
+            list->maxRange = COMPASS_YAS53x_RANGE;
+            list->resolution = COMPASS_YAS53x_RESOLUTION;
+            list->power = COMPASS_YAS53x_POWER;
+            list->minDelay = COMPASS_YAS53x_MINDELAY;
             return;
         }
         if(!strcmp(compass, "INV_AMI306")) {
@@ -389,8 +379,8 @@ int CompassSensor::inv_init_sysfs_attributes(void)
     sprintf(compassSysFs.compass_orient, "%s%s", sysfs_path, "/compass_matrix");
 #endif
 
-#if 0
-    // test print sysfs paths   
+#if SYSFS_VERBOSE
+    // test print sysfs paths
     dptr = (char**)&compassSysFs;
     for (i = 0; i < COMPASS_MAX_SYSFS_ATTRB; i++) {
         LOGE("HAL:sysfs path: %s", *dptr++);

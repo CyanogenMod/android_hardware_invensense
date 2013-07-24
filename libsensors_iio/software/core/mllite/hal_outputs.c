@@ -11,9 +11,12 @@
  *              Sets up common outputs for HAL
  *
  *   @{
- *       @file hal_outputs.c
+ *       @file  hal_outputs.c
  *       @brief HAL Outputs.
  */
+
+#include <string.h>
+
 #include "hal_outputs.h"
 #include "log.h"
 #include "ml_math_func.h"
@@ -121,6 +124,10 @@ int inv_get_sensor_type_gravity(float *values, int8_t *accuracy,
     return status;
 }
 
+/* Converts fixed point to rad/sec. Fixed point has 1 dps = 2^16.
+ * So this is: pi / 2^16 / 180 */
+#define GYRO_CONVERSION 2.66316109007924e-007f
+
 /** Gyroscope calibrated data (rad/s) in body frame.
 * @param[out] values Rotation Rate in rad/sec.
 * @param[out] accuracy Accuracy of the measurment, 0 is least accurate, while 3 is most accurate.
@@ -131,9 +138,6 @@ int inv_get_sensor_type_gravity(float *values, int8_t *accuracy,
 int inv_get_sensor_type_gyroscope(float *values, int8_t *accuracy,
                                    inv_time_t * timestamp)
 {
-    /* Converts fixed point to rad/sec. Fixed point has 1 dps = 2^16.
-     * So this is: pi / 2^16 / 180 */
-#define GYRO_CONVERSION 2.66316109007924e-007f
     long gyro[3];
     int status;
 
@@ -158,9 +162,6 @@ int inv_get_sensor_type_gyroscope(float *values, int8_t *accuracy,
 int inv_get_sensor_type_gyroscope_raw(float *values, int8_t *accuracy,
                                    inv_time_t * timestamp)
 {
-    /* Converts fixed point to rad/sec. Fixed point has 1 dps = 2^16.
-     * So this is: pi / 2^16 / 180 */
-#define GYRO_CONVERSION 2.66316109007924e-007f
     long gyro[3];
     int status;
 
@@ -353,8 +354,19 @@ inv_error_t inv_generate_hal_outputs(struct inv_sensor_cal_t *sensor_cal)
         use_sensor = 3;
     }
 
+    // Only output 9-axis if all 9 sensors are on.
+    if (sensor_cal->quat.status & INV_SENSOR_ON) {
+        // If quaternion sensor is on, gyros are not required as quaternion already has that part
+        if ((sensor_cal->accel.status & sensor_cal->compass.status & INV_SENSOR_ON) == 0) {
+            use_sensor = -1;
+        }
+    } else {
+        if ((sensor_cal->gyro.status & sensor_cal->accel.status & sensor_cal->compass.status & INV_SENSOR_ON) == 0) {
+            use_sensor = -1;
+        }
+    }
+
     switch (use_sensor) {
-    default:
     case 0:
         hal_out.nine_axis_status = (sensor_cal->gyro.status & INV_NEW_DATA) ? 1 : 0;
         hal_out.nav_timestamp = sensor_cal->gyro.timestamp;
@@ -370,6 +382,9 @@ inv_error_t inv_generate_hal_outputs(struct inv_sensor_cal_t *sensor_cal)
     case 3:
         hal_out.nine_axis_status = (sensor_cal->quat.status & INV_NEW_DATA) ? 1 : 0;
         hal_out.nav_timestamp = sensor_cal->quat.timestamp;
+        break;
+    default:
+        hal_out.nine_axis_status = 0; // Don't output quaternion related info
         break;
     }
 

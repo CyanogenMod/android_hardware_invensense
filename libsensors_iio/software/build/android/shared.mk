@@ -24,6 +24,7 @@ ifeq ($(BUILD_MPL),1)
 endif
 APP_FOLDERS  = $(INV_ROOT)/simple_apps/mpu_iio/build/$(TARGET)
 APP_FOLDERS += $(INV_ROOT)/simple_apps/self_test/build/$(TARGET)
+APP_FOLDERS += $(INV_ROOT)/simple_apps/gesture_test/build/$(TARGET)
 
 INSTALL_DIR = $(CURDIR)
 

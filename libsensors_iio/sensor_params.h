@@ -62,11 +62,11 @@
 #define COMPASS_YAS529_RANGE            (19660.f)
 #define COMPASS_YAS529_RESOLUTION       (0.012f)
 #define COMPASS_YAS529_POWER            (4.f)
-//COMPASS_ID_YAS530
-#define COMPASS_YAS530_RANGE            (8001.f)
-#define COMPASS_YAS530_RESOLUTION       (0.012f)
-#define COMPASS_YAS530_POWER            (4.f)
-#define COMPASS_YAS530_MINDELAY         (10000)
+//COMPASS_ID_YAS53x
+#define COMPASS_YAS53x_RANGE            (8001.f)
+#define COMPASS_YAS53x_RESOLUTION       (0.012f)
+#define COMPASS_YAS53x_POWER            (4.f)
+#define COMPASS_YAS53x_MINDELAY         (10000)
 //COMPASS_ID_HMC5883
 #define COMPASS_HMC5883_RANGE           (10673.f)
 #define COMPASS_HMC5883_RESOLUTION      (10.f)

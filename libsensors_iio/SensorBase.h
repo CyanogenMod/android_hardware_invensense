@@ -25,6 +25,7 @@
 #define CALL_MEMBER_FN(pobject, ptrToMember) ((pobject)->*(ptrToMember))
 
 #define MAX_SYSFS_NAME_LEN  (100)
+#define IIO_BUFFER_LENGTH   (480)
 
 /*****************************************************************************/
 
@@ -39,10 +40,6 @@ protected:
     int data_fd;
 
     int openInput(const char* inputName);
-    static int64_t getTimestamp();
-    static int64_t timevalToNano(timeval const& t) {
-        return t.tv_sec * 1000000000LL + t.tv_usec * 1000;
-    }
 
     int open_device();
     int close_device();

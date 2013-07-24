@@ -32,20 +32,25 @@
 
 #include "sensors.h"
 #include "MPLSensor.h"
-#include "local_log_def.h"
 
 /*****************************************************************************/
 /* The SENSORS Module */
 
 #ifdef ENABLE_DMP_SCREEN_AUTO_ROTATION
-#define LOCAL_SENSORS (numSensors + 1)
+#define LOCAL_SENSORS (MPLSensor::numSensors + 1)
 #else
-#define LOCAL_SENSORS numSensors
-
+#define LOCAL_SENSORS MPLSensor::numSensors
 #endif
 
+/* Vendor-defined Accel Load Calibration File Method
+* @param[out] Accel bias, length 3.  In HW units scaled by 2^16 in body frame
+* @return '0' for a successful load, '1' otherwise
+* example: int AccelLoadConfig(long* offset);
+* End of Vendor-defined Accel Load Cal Method
+*/
+
 static struct sensor_t sSensorList[LOCAL_SENSORS];
-static int sensors = LOCAL_SENSORS;
+static int sensors = (sizeof(sSensorList) / sizeof(sensor_t));
 
 static int open_sensors(const struct hw_module_t* module, const char* id,
                         struct hw_device_t** device);
@@ -101,8 +106,14 @@ private:
 sensors_poll_context_t::sensors_poll_context_t() {
     VFUNC_LOG;
 
-    CompassSensor *mCompassSensor = new CompassSensor();
+    mCompassSensor = new CompassSensor();
     MPLSensor *mplSensor = new MPLSensor(mCompassSensor);
+
+   /* For Vendor-defined Accel Calibration File Load
+    * Use the Following Constructor and Pass Your Load Cal File Function
+    *
+    * MPLSensor *mplSensor = new MPLSensor(mCompassSensor, AccelLoadConfig);
+    */
 
     // setup the callback object for handing mpl callbacks
     setCallbackObject(mplSensor);
@@ -156,11 +167,13 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
             if (mPollFds[i].revents & (POLLIN | POLLPRI)) {
                 nb = 0;
                 if (i == mpl) {
-                    nb = mSensor->readEvents(data, count);
+                    /* Ignore res */
+                    mSensor->readEvents(NULL, 0);
                     mPollFds[i].revents = 0;
                 }
                 else if (i == compass) {
-                    nb = ((MPLSensor*) mSensor)->readCompassEvents(data, count);
+                    /* Ignore res */
+                    ((MPLSensor*) mSensor)->readCompassEvents(NULL, count);
                     mPollFds[i].revents = 0;
                 }
             }
@@ -175,7 +188,7 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
         if (mPollFds[dmpOrient].revents & (POLLIN | POLLPRI)) {
             nb = ((MPLSensor*) mSensor)->readDmpOrientEvents(data, count);
             mPollFds[dmpOrient].revents= 0;
-            if (isDmpScreenAutoRotationOn() && nb > 0) {
+            if (isDmpScreenAutoRotationEnabled() && nb > 0) {
                 count -= nb;
                 nbEvents += nb;
                 data += nb;

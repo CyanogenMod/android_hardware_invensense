@@ -115,7 +115,7 @@ int read_sysfs_int(char *filename, int *var)
         fscanf(fp, "%d\n", var);
         fclose(fp);
     } else {
-        LOGE("HAL:ERR open file to read");
+        MPL_LOGE("inv_self_test: ERR open file to read");
         res= -1;   
     }
     return res;
@@ -132,7 +132,7 @@ int write_sysfs_int(char *filename, int data)
         fprintf(fp, "%d\n", data);
         fclose(fp);
     } else {
-        LOGE("HAL:ERR open file to write");
+        MPL_LOGE("inv_self_test: ERR open file to write");
         res= -1;   
     }
     return res;
@@ -155,7 +155,7 @@ int inv_init_sysfs_attributes(void)
             sptr += sizeof(char[MAX_SYSFS_NAME_LEN]);
         } while (++i < MAX_SYSFS_ATTRB);
     } else {
-        LOGE("HAL:couldn't alloc mem for sysfs paths");
+        MPL_LOGE("inv_self_test: couldn't alloc mem for sysfs paths");
         return -1;
     }
 
@@ -184,7 +184,7 @@ int inv_init_sysfs_attributes(void)
     // test print sysfs paths
     dptr = (char**)&mpu;
     for (i = 0; i < MAX_SYSFS_ATTRB; i++) {
-        LOGE("HAL:sysfs path: %s", *dptr++);
+        MPL_LOGE("inv_self_test: sysfs path: %s", *dptr++);
     }
 #endif
     return 0;
@@ -407,6 +407,7 @@ int main(int argc, char **argv)
             result = -1;
         }
     }
+
     free(buffer);
 
 free_sysfs_storage:
