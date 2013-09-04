@@ -33,9 +33,16 @@
 #define SENSORS_STEP_COUNTER_HANDLE                (ID_SC)
 #define SENSORS_GEOMAGNETIC_ROTATION_VECTOR_HANDLE (ID_GMRV)
 #define SENSORS_PRESSURE_HANDLE                    (ID_PS)
+#define SENSORS_FLUSH_COMPLETE                     (ID_FC)
 #define SENSORS_SCREEN_ORIENTATION_HANDLE          (ID_SO)
 
 /******************************************/
+/******************************************/
+//MPU9350 INV_COMPASS
+#define COMPASS_MPU9350_RANGE           (9830.f)
+#define COMPASS_MPU9350_RESOLUTION      (0.15f)
+#define COMPASS_MPU9350_POWER           (10.f)
+#define COMPASS_MPU9350_MINDELAY        (1000)
 //MPU9250 INV_COMPASS
 #define COMPASS_MPU9250_RANGE           (9830.f)
 #define COMPASS_MPU9250_RESOLUTION      (0.15f)
@@ -104,6 +111,11 @@
 #define ACCEL_MPU6500_RESOLUTION        (0.004f * GRAVITY_EARTH)
 #define ACCEL_MPU6500_POWER             (0.5f)
 #define ACCEL_MPU6500_MINDELAY          (1000)
+//ACCEL_ID_MPU9350
+#define ACCEL_MPU9350_RANGE             (2.f * GRAVITY_EARTH)
+#define ACCEL_MPU9350_RESOLUTION        (0.004f * GRAVITY_EARTH)
+#define ACCEL_MPU9350_POWER             (0.5f)
+#define ACCEL_MPU9350_MINDELAY          (1000)
 //ACCEL_ID_MPU9250
 #define ACCEL_MPU9250_RANGE             (2.f * GRAVITY_EARTH)
 #define ACCEL_MPU9250_RESOLUTION        (0.004f * GRAVITY_EARTH)
@@ -181,6 +193,11 @@
 #define GYRO_MPU9150_RESOLUTION         (2000.f / 32768.f * RAD_P_DEG)
 #define GYRO_MPU9150_POWER              (5.5f)
 #define GYRO_MPU9150_MINDELAY           (1000)
+//GYRO MPU9350
+#define GYRO_MPU9350_RANGE              (2000.f * RAD_P_DEG)
+#define GYRO_MPU9350_RESOLUTION         (2000.f / 32768.f * RAD_P_DEG)
+#define GYRO_MPU9350_POWER              (5.5f)
+#define GYRO_MPU9350_MINDELAY           (1000)
 //GYRO MPU9250
 #define GYRO_MPU9250_RANGE              (2000.f * RAD_P_DEG)
 #define GYRO_MPU9250_RESOLUTION         (2000.f / 32768.f * RAD_P_DEG)
@@ -201,6 +218,6 @@
 #define PRESSURE_BMP280_RANGE           (1100.f)   // hpa
 #define PRESSURE_BMP280_RESOLUTION      (0.0018f)  // in psi
 #define PRESSURE_BMP280_POWER           (0.0248f)  // 0.00248mA
-#define PRESSURE_BMP280_MINDELAY        (26700)    // 26.7Hz
+#define PRESSURE_BMP280_MINDELAY        (100000)   // 10Hz
 #endif  /* INV_SENSOR_PARAMS_H */
 

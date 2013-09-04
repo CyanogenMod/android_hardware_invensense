@@ -35,26 +35,14 @@
 //build for ICS or earlier version
 #endif
 
-/* Log enablers, each of these independent */
-
-#define PROCESS_VERBOSE (0) /* process log messages */
-#define EXTRA_VERBOSE   (0) /* verbose log messages */
-#define SYSFS_VERBOSE   (0) /* log sysfs interactions as cat/echo for repro
-                               purpose on a shell */
-#define FUNC_ENTRY      (0) /* log entry in all one-time functions */
-
-/* Note that enabling this logs may affect performance */
-#define HANDLER_ENTRY   (0) /* log entry in all handler functions */
-#define ENG_VERBOSE     (0) /* log some a lot more info about the internals */
-#define INPUT_DATA      (0) /* log the data input from the events */
-#define HANDLER_DATA    (0) /* log the data fetched from the handlers */
-
 #define FUNC_LOG \
             LOGV("%s", __PRETTY_FUNCTION__)
 #define VFUNC_LOG \
-            LOGV_IF(FUNC_ENTRY, "Entering function '%s'", __PRETTY_FUNCTION__)
+            LOGV_IF(SensorBase::FUNC_ENTRY, \
+                    "Entering function '%s'", __PRETTY_FUNCTION__)
 #define VHANDLER_LOG \
-            LOGV_IF(HANDLER_ENTRY, "Entering handler '%s'", __PRETTY_FUNCTION__)
+            LOGV_IF(SensorBase::HANDLER_ENTRY, \
+                    "Entering handler '%s'", __PRETTY_FUNCTION__)
 #define CALL_MEMBER_FN(pobject, ptrToMember) ((pobject)->*(ptrToMember))
 
 #define MAX_SYSFS_NAME_LEN  (100)
@@ -65,6 +53,19 @@
 struct sensors_event_t;
 
 class SensorBase {
+public:
+    /* Log enablers, each of these independent */
+    static bool PROCESS_VERBOSE;   /* process log messages */
+    static bool EXTRA_VERBOSE;     /* verbose log messages */
+    static bool SYSFS_VERBOSE;     /* log sysfs interactions as cat/echo for 
+                                      repro purpose on a shell */
+    /* Note that enabling this logs may affect performance */
+    static bool FUNC_ENTRY;        /* log entry in all one-time functions */
+    static bool HANDLER_ENTRY;     /* log entry in all handler functions */
+    static bool ENG_VERBOSE;       /* log a lot more info about the internals */
+    static bool INPUT_DATA;        /* log the data input from the events */
+    static bool HANDLER_DATA;      /* log the data fetched from the handlers */
+
 protected:
     const char *dev_name;
     const char *data_name;
@@ -83,7 +84,6 @@ protected:
 
 public:
     SensorBase(const char* dev_name, const char* data_name);
-
     virtual ~SensorBase();
 
     virtual int readEvents(sensors_event_t* data, int count) = 0;
@@ -95,6 +95,7 @@ public:
     virtual int enable(int32_t handle, int enabled);
     virtual int query(int what, int* value);
     virtual int batch(int handle, int flags, int64_t period_ns, int64_t timeout);
+    virtual int flush(int handle);
 };
 
 /*****************************************************************************/

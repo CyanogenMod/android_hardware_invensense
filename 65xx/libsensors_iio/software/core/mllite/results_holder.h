@@ -41,7 +41,7 @@ int inv_get_motion_state(unsigned int *cntr);
 void inv_set_motion_state(unsigned char state);
 inv_error_t inv_get_gravity(long *data);
 inv_error_t inv_get_gravity_6x(long *data);
-inv_error_t inv_get_6axis_quaternion(long *data);
+inv_error_t inv_get_6axis_quaternion(long *data, inv_time_t *timestamp);
 inv_error_t inv_get_quaternion(long *data);
 inv_error_t inv_get_quaternion_float(float *data);
 void inv_get_quaternion_set(long *data, int *accuracy, inv_time_t *timestamp);

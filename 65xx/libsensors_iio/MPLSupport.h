@@ -24,6 +24,8 @@ int read_attribute_sensor(int fd, char* data, unsigned int size);
 int enable_sysfs_sensor(int fd, int en);
 int write_attribute_sensor(int fd, long data);
 int write_attribute_sensor_continuous(int fd, long data);
+int read_sysfs_int64(char*, int64_t*);
+void convert_long_to_hex_char(long* quat, unsigned char* hex, int numElement);
 int read_sysfs_int(char*, int*);
 int write_sysfs_int(char*, int);
 int write_sysfs_longlong(char*, long long);

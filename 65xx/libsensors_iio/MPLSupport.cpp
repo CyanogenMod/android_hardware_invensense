@@ -149,14 +149,41 @@ int read_sysfs_int(char *filename, int *var)
     FILE  *sysfsfp;
 
     sysfsfp = fopen(filename, "r");
-    if (sysfsfp!=NULL) {
-        fscanf(sysfsfp, "%d\n", var);
-        fclose(sysfsfp);
-    } else {
-        res = errno;
-        LOGE("HAL:ERR open file %s to read with error %d", filename, res);
+    if (sysfsfp != NULL) {
+        if (fscanf(sysfsfp, "%d\n", var) < 0 || fclose(sysfsfp) < 0) {    
+            res = errno;
+            LOGE("HAL:ERR open file %s to read with error %d", filename, res);
+        }
     }
     return -res;
+}
+
+int read_sysfs_int64(char *filename, int64_t *var)
+{
+    int res=0;
+    FILE  *sysfsfp;
+
+    sysfsfp = fopen(filename, "r");
+    if (sysfsfp != NULL) {
+        if (fscanf(sysfsfp, "%lld\n", var) < 0 || fclose(sysfsfp) < 0) {    
+            res = errno;
+            LOGE("HAL:ERR open file %s to read with error %d", filename, res);
+        }
+    }
+    return -res;
+}
+
+void convert_long_to_hex_char(long* quat, unsigned char* hex, int numElement)
+{
+    int bytePosition = 0;
+    for (int index = 0; index < numElement; index++) {
+        for (int i = 0; i < 4; i++) {
+            hex[bytePosition] = (int) ((quat[index] >> (4-1-i) * 8) & 0xFF);                                 
+            //LOGI("e%d quat[%d]: %x", index, bytePosition, hex[bytePosition]);
+            bytePosition++;
+        }
+    }
+    return;
 }
 
 int write_sysfs_int(char *filename, int var)
@@ -165,12 +192,11 @@ int write_sysfs_int(char *filename, int var)
     FILE  *sysfsfp;
 
     sysfsfp = fopen(filename, "w");
-    if (sysfsfp!=NULL) {
-        fprintf(sysfsfp, "%d\n", var);
-        fclose(sysfsfp);
-    } else {
-        res = errno;
-        LOGE("HAL:ERR open file %s to write with error %d", filename, res);
+    if (sysfsfp != NULL) {
+        if (fprintf(sysfsfp, "%d\n", var) < 0 || fclose(sysfsfp) < 0) {
+            res = errno;
+            LOGE("HAL:ERR open file %s to write with error %d", filename, res);
+        }
     }
     return -res;
 }
@@ -181,12 +207,11 @@ int write_sysfs_longlong(char *filename, int64_t var)
     FILE  *sysfsfp;
 
     sysfsfp = fopen(filename, "w");
-    if (sysfsfp!=NULL) {
-        fprintf(sysfsfp, "%lld\n", var);
-        fclose(sysfsfp);
-    } else {
-        res = errno;
-        LOGE("HAL:ERR open file %s to write with error %d", filename, res);
+    if (sysfsfp != NULL) {
+        if (fprintf(sysfsfp, "%lld\n", var) < 0 || fclose(sysfsfp) < 0) {   
+            res = errno;
+            LOGE("HAL:ERR open file %s to write with error %d", filename, res);
+        }
     }
     return -res;
 }

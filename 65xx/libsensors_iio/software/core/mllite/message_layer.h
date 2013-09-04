@@ -32,6 +32,8 @@ extern "C" {
 #define INV_MSG_HEADING_NOT_ACCURATE_EVENT  (0x40)
 /** A setting of the factory gyro bias has occured */
 #define INV_MSG_NEW_FGB_EVENT            (0x80)
+/** A setting of the factory accel bias has occured */
+#define INV_MSG_NEW_FAB_EVENT            (0x100)
 
 void inv_set_message(long set, long clear, int level);
 long inv_get_message_level_0(int clear);
