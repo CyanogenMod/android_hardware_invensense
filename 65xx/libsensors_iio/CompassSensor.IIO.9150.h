@@ -51,6 +51,8 @@ public:
     // unnecessary for MPL
     virtual int readEvents(sensors_event_t *data, int count) { return 0; }
 
+    int turnOffCompassFifo(void);
+    int turnOnCompassFifo(void);
     int readSample(long *data, int64_t *timestamp);
     int providesCalibration() { return 0; }
     void getOrientationMatrix(signed char *orient);
@@ -70,6 +72,7 @@ private:
 
     struct sysfs_attrbs {
        char *compass_enable;
+       char *compass_fifo_enable;
        char *compass_x_fifo_enable;
        char *compass_y_fifo_enable;
        char *compass_z_fifo_enable;

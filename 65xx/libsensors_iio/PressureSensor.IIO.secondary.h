@@ -37,7 +37,7 @@
 class PressureSensor : public SensorBase {
 
 public:
-    PressureSensor(const char *sysfs_path);    
+    PressureSensor(const char *sysfs_path);
     virtual ~PressureSensor();
 
     virtual int getFd() const;
@@ -45,7 +45,7 @@ public:
     virtual int setDelay(int32_t handle, int64_t ns);
     virtual int getEnable(int32_t handle);
     virtual int64_t getDelay(int32_t handle);
-    virtual int64_t getMinDelay() { return -1; } // stub
+    virtual int64_t getMinDelay() { return mMinDelay; }
     // only applicable to primary
     virtual int readEvents(sensors_event_t *data, int count) { return 0; }
             
@@ -58,11 +58,12 @@ private:
     
     struct sysfs_attrbs {
        char *pressure_enable;
-       char *pressure_rate;    
+       char *pressure_rate;
     } pressureSysFs;
 
     int pressure_fd; 
     int64_t mDelay;
+    int64_t mMinDelay;
     int mEnable;
     char* pathP;
     const char* mSysfsPath;

@@ -92,6 +92,7 @@ struct sensors_poll_context_t {
     int pollEvents(sensors_event_t* data, int count);
     int query(int what, int *value);
     int batch(int handle, int flags, int64_t period_ns, int64_t timeout);
+    int flush(int handle);
 
 private:
     enum {
@@ -209,12 +210,11 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
     polltime = ((MPLSensor*) mSensor)->getStepCountPollTime();
 
     // look for new events
-    nb = poll(mPollFds, numFds, polltime);
+    nb = poll(mPollFds, numSensorDrivers, polltime);
     LOGI_IF(0, "poll nb=%d, count=%d, pt=%d", nb, count, polltime);
     if (nb > 0) {
         for (int i = 0; count && i < numSensorDrivers; i++) {
-            if (mPollFds[i].revents & (POLLIN | POLLPRI)) {               
-                LOGI_IF(0, "poll found=%d", i);
+            if (mPollFds[i].revents & (POLLIN | POLLPRI)) {
                 nb = 0;
                 if (i == mpl) {
                     ((MPLSensor*) mSensor)->buildMpuEvent();
@@ -223,7 +223,8 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
                     ((MPLSensor*) mSensor)->buildCompassEvent();
                     mPollFds[i].revents = 0;
                 } else if (i == dmpOrient) {
-                    nb = ((MPLSensor*) mSensor)->readDmpOrientEvents(data, count);
+                    nb = ((MPLSensor*)mSensor)->
+                                        readDmpOrientEvents(data, count);
                     mPollFds[dmpOrient].revents= 0;
                     if (isDmpScreenAutoRotationEnabled() && nb > 0) {
                         count -= nb;
@@ -232,58 +233,64 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
                     }
                 } else if (i == dmpSign) {
                     LOGI("HAL: dmpSign interrupt");
-                    nb = ((MPLSensor*) mSensor)->readDmpSignificantMotionEvents(data, count);
+                    nb = ((MPLSensor*) mSensor)->
+                                    readDmpSignificantMotionEvents(data, count);
                     mPollFds[i].revents = 0;
                     count -= nb;
                     nbEvents += nb;
                     data += nb; 
                 } else if (i == dmpPed) {
                     LOGI("HAL: dmpPed interrupt");
-                    nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(data, count, ID_P, SENSOR_TYPE_STEP_DETECTOR, 0);
+                    nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(
+                            data, count, ID_P, SENSOR_TYPE_STEP_DETECTOR, 0);
                     mPollFds[i].revents = 0;
                     count -= nb;
                     nbEvents += nb;
                     data += nb;
                 }
-                nb = ((MPLSensor*) mSensor)->readEvents(data, count);
-                LOGI_IF(0, "sensors_mpl:readEvents() - i=%d, nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, data->data[0]=%f,",
-                             i, nb, count, nbEvents, data->timestamp, data->data[0]);
-                if (nb > 0) {
-                    count -= nb;
-                    nbEvents += nb;
-                    data += nb;
+                #if 1
+                if(nb == 0) {
+                    nb = ((MPLSensor*) mSensor)->readEvents(data, count);
+                    LOGI_IF(0, "sensors_mpl:readEvents() - "
+                            "i=%d, nb=%d, count=%d, nbEvents=%d, "
+                            "data->timestamp=%lld, data->data[0]=%f,",
+                            i, nb, count, nbEvents, data->timestamp, 
+                            data->data[0]);
+                    if (nb > 0) {
+                        count -= nb;
+                        nbEvents += nb;
+                        data += nb;
+                    }
                 }
+                #endif
             }
         }
-//        nb = ((MPLSensor*) mSensor)->readEvents(data, count);
-//        LOGI_IF(0, "sensors_mpl:readEvents() - nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, data->data[0]=%f,",
-//                          nb, count, nbEvents, data->timestamp, data->data[0]);
-//        if (nb > 0) {
-//            count -= nb;
-//            nbEvents += nb;
-//            data += nb;
-//        }
 
         /* to see if any step counter events */
         if(((MPLSensor*) mSensor)->hasStepCountPendingEvents() == true) {
             nb = 0;
-            nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(data, count, ID_SC, SENSOR_TYPE_STEP_COUNTER, 0);
-            LOGI_IF(HANDLER_DATA, "sensors_mpl:readStepCount() - nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, data->data[0]=%f,",
-                          nb, count, nbEvents, data->timestamp, data->data[0]);
+            nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(
+                            data, count, ID_SC, SENSOR_TYPE_STEP_COUNTER, 0);
+            LOGI_IF(SensorBase::HANDLER_DATA, "sensors_mpl:readStepCount() - "
+                    "nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, "
+                    "data->data[0]=%f,",
+                    nb, count, nbEvents, data->timestamp, data->data[0]);
             if (nb > 0) {
                 count -= nb;
                 nbEvents += nb;
                 data += nb;
             }
         }
-    } else if(nb == 0){
-
+    } else if(nb == 0) {
         /* to see if any step counter events */
         if(((MPLSensor*) mSensor)->hasStepCountPendingEvents() == true) {
             nb = 0;
-            nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(data, count, ID_SC, SENSOR_TYPE_STEP_COUNTER, 0);
-            LOGI_IF(HANDLER_DATA, "sensors_mpl:readStepCount() - nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, data->data[0]=%f,",
-                          nb, count, nbEvents, data->timestamp, data->data[0]);
+            nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(
+                            data, count, ID_SC, SENSOR_TYPE_STEP_COUNTER, 0);
+            LOGI_IF(SensorBase::HANDLER_DATA, "sensors_mpl:readStepCount() - "
+                    "nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, "
+                    "data->data[0]=%f,",
+                    nb, count, nbEvents, data->timestamp, data->data[0]);
             if (nb > 0) {
                 count -= nb;
                 nbEvents += nb;
@@ -294,7 +301,8 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
         if (mPollFds[numSensorDrivers].revents & POLLIN) {
             char msg;
             int result = read(mPollFds[numSensorDrivers].fd, &msg, 1);
-            LOGE_IF(result < 0, "error reading from wake pipe (%s)", strerror(errno));
+            LOGE_IF(result < 0, 
+                    "error reading from wake pipe (%s)", strerror(errno));
             mPollFds[numSensorDrivers].revents = 0;
         }
     }
@@ -307,10 +315,17 @@ int sensors_poll_context_t::query(int what, int* value)
     return mSensor->query(what, value);
 }
 
-int sensors_poll_context_t::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
+int sensors_poll_context_t::batch(int handle, int flags, int64_t period_ns, 
+                                  int64_t timeout)
 {
     FUNC_LOG;
     return mSensor->batch(handle, flags, period_ns, timeout);
+}
+
+int sensors_poll_context_t::flush(int handle)
+{
+    FUNC_LOG;
+    return mSensor->flush(handle);
 }
 
 /******************************************************************************/
@@ -361,6 +376,12 @@ static int poll__batch(struct sensors_poll_device_1 *dev,
     return ctx->batch(handle, flags, period_ns, timeout);
 }
 
+static int poll__flush(struct sensors_poll_device_1 *dev,
+                      int handle)
+{
+    sensors_poll_context_t *ctx = (sensors_poll_context_t *)dev;
+    return ctx->flush(handle);
+}
 /******************************************************************************/
 
 /** Open a new instance of a sensor device using name */
@@ -383,6 +404,7 @@ static int open_sensors(const struct hw_module_t* module, const char* id,
 
     /* Batch processing */
     dev->device.batch           = poll__batch; 
+    dev->device.flush           = poll__flush;
 
     *device = &dev->device.common;
     status = 0;

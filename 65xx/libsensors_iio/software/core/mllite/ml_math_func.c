@@ -546,7 +546,7 @@ uint32_t inv_checksum(const unsigned char *str, int len)
 
     for (i = 0; i < len; i++) {
         c = *(str + i);
-        hash = ((hash << 5) + hash) + c;	/* hash * 33 + c */
+        hash = ((hash << 5) + hash) + c;    /* hash * 33 + c */
     }
 
     return hash;
@@ -569,7 +569,7 @@ static unsigned short inv_row_2_scale(const signed char *row)
     else if (row[2] < 0)
         b = 6;
     else
-        b = 7;		// error
+        b = 7;  // error
     return b;
 }
 
@@ -600,7 +600,6 @@ unsigned short inv_orientation_matrix_to_scalar(const signed char *mtx)
     scalar = inv_row_2_scale(mtx);
     scalar |= inv_row_2_scale(mtx + 3) << 3;
     scalar |= inv_row_2_scale(mtx + 6) << 6;
-
 
     return scalar;
 }
@@ -637,7 +636,9 @@ void inv_convert_to_chip(unsigned short orientation, const long *input, long *ou
 * @param[in] input Input vector, length 3
 * @param[out] output Output vector, length 3
 */
-void inv_convert_to_body_with_scale(unsigned short orientation, long sensitivity, const long *input, long *output)
+void inv_convert_to_body_with_scale(unsigned short orientation,
+                                    long sensitivity,
+                                    const long *input, long *output)
 {
     output[0] = inv_q30_mult(input[orientation & 0x03] *
                              SIGNSET(orientation & 0x004), sensitivity);
@@ -878,7 +879,7 @@ long inv_fast_sqrt(long x0)
 long inv_one_over_x(long x0, int*pow)
 {
 	//% NR for 1/x in the neighborhood of log(2) => x => log(4)
-	//%    y(k+1)=y(k)*(2 – x0*y(k))
+	//%    y(k+1)=y(k)*(2 \ 96 x0*y(k))
     //% with y(0) = 1 as the starting value for NR
 
 	long two, xx;

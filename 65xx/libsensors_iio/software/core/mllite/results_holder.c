@@ -273,9 +273,10 @@ inv_error_t inv_get_gravity_6x(long *data)
  * @param[out] data 6-axis  gyro and accel quaternion scaled such that 1.0 = 2^30.
  * @return Returns INV_SUCCESS if successful or an error code if not.
  */
-inv_error_t inv_get_6axis_quaternion(long *data)
+inv_error_t inv_get_6axis_quaternion(long *data, inv_time_t *timestamp)
 {
     memcpy(data, rh.gam_quat, sizeof(rh.gam_quat));
+    *timestamp = rh.gam_timestamp;
     return INV_SUCCESS;
 }
 

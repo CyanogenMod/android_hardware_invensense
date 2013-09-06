@@ -109,6 +109,7 @@ class PressureSensor;
 )
 // data header format used by kernel driver.
 #define DATA_FORMAT_STEP           0x0001
+#define DATA_FORMAT_MARKER         0x0010
 #define DATA_FORMAT_PED_STANDALONE 0x0100
 #define DATA_FORMAT_PED_QUAT       0x0200
 #define DATA_FORMAT_6_AXIS         0x0400
@@ -200,6 +201,8 @@ public:
     virtual int setDelay(int32_t handle, int64_t ns);
     virtual int enable(int32_t handle, int enabled);
     virtual int batch(int handle, int flags, int64_t period_ns, int64_t timeout);
+    virtual int flush(int handle);
+    int checkBatchEnabled();
     int setBatch(int en, int toggleEnable);
     int32_t getEnableMask() { return mEnabled; }
     void getHandle(int32_t handle, int &what, android::String8 &sname);
@@ -269,6 +272,7 @@ protected:
     int scHandler(sensors_event_t *data);
     int gmHandler(sensors_event_t *data);
     int psHandler(sensors_event_t *data);
+    int metaHandler(sensors_event_t *data, int flags);
     void calcOrientationSensor(float *Rx, float *Val);
     virtual int update_delay();
 
@@ -290,6 +294,7 @@ protected:
     int enableAccelPedData(int);
     int onDmp(int);
     int enableGyro(int en);
+    int enableLowPowerAccel(int en);
     int enableAccel(int en);
     int enableCompass(int en, int rawSensorOn);
     int enablePressure(int en);
@@ -317,8 +322,10 @@ protected:
     int checkPedStandaloneEnabled(void);
     int checkPedQuatEnabled();
     int check6AxisQuatEnabled();
+    int checkLPQRateSupported();
     int checkLPQuaternion();
     int checkAccelPed();
+    void setInitial6QuatValue();
     int writeSignificantMotionParams(bool toggleEnable,
                                      uint32_t delayThreshold1, uint32_t delayThreshold2,
                                      uint32_t motionThreshold);
@@ -372,6 +379,8 @@ protected:
 
     uint32_t mEnabled;
     uint32_t mBatchEnabled;
+    int32_t mFlushEnabled;
+    uint32_t mOldBatchEnabledMask;
     int64_t mBatchTimeoutInMs;
     sensors_event_t mPendingEvents[NumSensors];
     int64_t mDelays[NumSensors];
@@ -395,6 +404,7 @@ protected:
     short mTempOffset;
     int64_t mTempCurrentTime;
     int mAccelScale;
+    long mAccelSelfTestScale;
     long mGyroScale;
     long mGyroSelfTestScale;
     long mCompassScale;
@@ -427,6 +437,7 @@ protected:
     struct sysfs_attrbs {
        char *chip_enable;
        char *power_state;
+       char *master_enable;
        char *dmp_firmware;
        char *firmware_loaded;
        char *dmp_on;
@@ -454,10 +465,12 @@ protected:
 
        char *three_axis_q_on; //formerly quaternion_on
        char *three_axis_q_rate;
-       
+
        char *six_axis_q_on;
        char *six_axis_q_rate;
-       
+
+       char *six_axis_q_value;
+
        char *ped_q_on;
        char *ped_q_rate;
 
@@ -476,6 +489,7 @@ protected:
        char *in_accel_x_offset;
        char *in_accel_y_offset;
        char *in_accel_z_offset;
+       char *in_accel_self_test_scale;
 
        char *in_accel_x_dmp_bias;
        char *in_accel_y_dmp_bias;
@@ -497,11 +511,14 @@ protected:
        char *smd_threshold;
        char *batchmode_timeout;
        char *batchmode_wake_fifo_full_on;
+       char *flush_batch;
 
        char *pedometer_on;
        char *pedometer_int_on;
        char *event_pedometer;
        char *pedometer_steps;
+       
+       char *motion_lpa_on;
     } mpu;
 
     char *sysfs_names_ptr;
@@ -509,11 +526,16 @@ protected:
     uint64_t mFeatureActiveMask;
     bool mDmpOn;
     int mPedUpdate;
+    int mPressureUpdate;
     int64_t mQuatSensorTimestamp;
     int64_t mStepSensorTimestamp;
     uint64_t mLastStepCount;
     int mLeftOverBufferSize;
     char mLeftOverBuffer[24];
+    bool mInitial6QuatValueAvailable;
+    long mInitial6QuatValue[4];
+    bool mFlushBatchSet;
+    uint32_t mSkipReadEvents;
 
 private:
     /* added for dynamic get sensor list */

@@ -19,6 +19,7 @@
 #define MPL_LOG_NDEBUG 1 /* Use 0 to turn on MPL_LOGV output */
 #undef MPL_LOG_TAG
 #define MPL_LOG_TAG "MLLITE"
+//#define MPL_LOG_9AXIS_DEBUG 1
 
 #include <string.h>
 
@@ -86,6 +87,8 @@ int inv_get_sensor_type_accelerometer(float *values, int8_t *accuracy,
         status = 1;
     else
         status = 0;
+    MPL_LOGV("accel values:%f %f %f -%d -%lld", values[0], values[1],
+                              values[2], status, *timestamp);
     return status;
 }
 
@@ -101,6 +104,7 @@ int inv_get_sensor_type_linear_acceleration(float *values, int8_t *accuracy,
         inv_time_t * timestamp)
 {
     long gravity[3], accel[3];
+    int status;
 
     inv_get_accel_set(accel, accuracy, timestamp);
     inv_get_gravity(gravity);
@@ -111,7 +115,11 @@ int inv_get_sensor_type_linear_acceleration(float *values, int8_t *accuracy,
     values[1] = accel[1] * ACCEL_CONVERSION;
     values[2] = accel[2] * ACCEL_CONVERSION;
 
-    return hal_out.nine_axis_status;
+    if (hal_out.accel_status & INV_NEW_DATA)
+        status = 1;
+    else
+        status = 0;
+    return status;
 }
 
 /** Gravity vector (m/s^2) in Body Frame.
@@ -133,7 +141,7 @@ int inv_get_sensor_type_gravity(float *values, int8_t *accuracy,
     values[0] = (gravity[0] >> 14) * ACCEL_CONVERSION;
     values[1] = (gravity[1] >> 14) * ACCEL_CONVERSION;
     values[2] = (gravity[2] >> 14) * ACCEL_CONVERSION;
-    if ((hal_out.accel_status & INV_NEW_DATA) || (hal_out.gyro_status & INV_NEW_DATA))
+    if (hal_out.accel_status & INV_NEW_DATA)
         status = 1;
     else
         status = 0;
@@ -209,11 +217,14 @@ int inv_get_sensor_type_gyroscope_raw(float *values, int8_t *accuracy,
 *
 * Elements of the rotation vector are unitless. The x,y and z axis are defined in the same way as the acceleration sensor.
 * The reference coordinate system is defined as a direct orthonormal basis, where:
-
-    -X is defined as the vector product Y.Z (It is tangential to the ground at the device's current location and roughly points East).
-    -Y is tangential to the ground at the device's current location and points towards the magnetic North Pole.
-    -Z points towards the sky and is perpendicular to the ground.
-* @param[out] values Length 4, 4th one being the heading accuracy at 95%.
+*
+*   -X is defined as the vector product Y.Z (It is tangential to the ground at the device's current location and roughly points East).
+*   -Y is tangential to the ground at the device's current location and points towards the magnetic North Pole.
+*   -Z points towards the sky and is perpendicular to the ground.
+* @param[out] values 
+*               Length 5, 4th element being the w angle of the originating 4 
+*               elements quaternion and 5th element being the heading accuracy
+*               at 95%.
 * @param[out] accuracy Accuracy is not defined
 * @param[out] timestamp Timestamp. In (ns) for Android.
 * @return     Returns 1 if the data was updated or 0 if it was not updated.
@@ -245,11 +256,7 @@ int inv_get_sensor_type_rotation_vector_6_axis(float *values, int8_t *accuracy,
     int status;
     long accel[3], quat_6_axis[4];
     inv_get_accel_set(accel, accuracy, timestamp);
-
-    hal_out.gam_timestamp = hal_out.nav_timestamp;
-    *timestamp = hal_out.gam_timestamp;
-
-    inv_get_6axis_quaternion(quat_6_axis);
+    inv_get_6axis_quaternion(quat_6_axis, timestamp);
 
     if (quat_6_axis[0] >= 0) {
         values[0] = quat_6_axis[1] * INV_TWO_POWER_NEG_30;
@@ -264,10 +271,13 @@ int inv_get_sensor_type_rotation_vector_6_axis(float *values, int8_t *accuracy,
     }
     //This sensor does not report an estimated heading accuracy
     values[4] = 0;
-    if ((hal_out.accel_status & INV_NEW_DATA) || (hal_out.quat_status & INV_NEW_DATA))
-        status = 1;
-    else
-        status = 0;
+    if (hal_out.quat_status & INV_QUAT_3AXIS)
+    {        
+        status = hal_out.quat_status & INV_NEW_DATA? 1 : 0;
+    }
+    else {
+        status = hal_out.accel_status & INV_NEW_DATA? 1 : 0;
+    }
     MPL_LOGV("values:%f %f %f %f %f -%d -%lld", values[0], values[1],
                               values[2], values[3], values[4], status, *timestamp);
     return status;
@@ -398,8 +408,9 @@ static void inv_get_rotation_6_axis(float r[3][3])
 {
     long rot[9], quat_6_axis[4];
     float conv = 1.f / (1L<<30);
+    inv_time_t timestamp;
 
-    inv_get_6axis_quaternion(quat_6_axis);
+    inv_get_6axis_quaternion(quat_6_axis, &timestamp);
     inv_quaternion_to_rotation(quat_6_axis, rot);
     r[0][0] = rot[0]*conv;
     r[0][1] = rot[1]*conv;
@@ -533,7 +544,9 @@ inv_error_t inv_generate_hal_outputs(struct inv_sensor_cal_t *sensor_cal)
     hal_out.accel_status = sensor_cal->accel.status;
     hal_out.compass_status = sensor_cal->compass.status;
     hal_out.quat_status = sensor_cal->quat.status;
-
+#if MPL_LOG_9AXIS_DEBUG
+    MPL_LOGV("hal_out:g=%d", hal_out.gyro_status);
+#endif
     // Find the highest sample rate and tie generating 9-axis to that one.
     if (sensor_cal->gyro.status & INV_SENSOR_ON) {
         sr = sensor_cal->gyro.sample_rate_ms;
@@ -563,7 +576,9 @@ inv_error_t inv_generate_hal_outputs(struct inv_sensor_cal_t *sensor_cal)
             use_sensor = -1;
         }
     }
-
+#if MPL_LOG_9AXIS_DEBUG
+    MPL_LOGI("use_sensor=%d", use_sensor);
+#endif
     switch (use_sensor) {
     case 0:
         hal_out.nine_axis_status = (sensor_cal->gyro.status & INV_NEW_DATA) ? 1 : 0;
@@ -585,7 +600,9 @@ inv_error_t inv_generate_hal_outputs(struct inv_sensor_cal_t *sensor_cal)
         hal_out.nine_axis_status = 0; // Don't output quaternion related info
         break;
     }
-
+#if MPL_LOG_9AXIS_DEBUG
+    MPL_LOGI("nav ts: %lld", hal_out.nav_timestamp);    
+#endif
     /* Converts fixed point to uT. Fixed point has 1 uT = 2^16.
      * So this is: 1 / 2^16*/
     #define COMPASS_CONVERSION 1.52587890625e-005f
@@ -639,7 +656,7 @@ inv_error_t inv_start_hal_outputs(void)
     result =
         inv_register_data_cb(inv_generate_hal_outputs,
                              INV_PRIORITY_HAL_OUTPUTS,
-                             INV_GYRO_NEW | INV_ACCEL_NEW | INV_MAG_NEW | INV_QUAT_NEW);
+                             INV_GYRO_NEW | INV_ACCEL_NEW | INV_MAG_NEW | INV_QUAT_NEW | INV_PRESSURE_NEW);
     return result;
 }
 

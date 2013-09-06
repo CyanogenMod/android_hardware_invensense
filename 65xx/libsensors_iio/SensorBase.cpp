@@ -19,23 +19,72 @@
 #include <math.h>
 #include <poll.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <dirent.h>
 #include <sys/select.h>
 #include <cutils/log.h>
 #include <linux/input.h>
 
+#include <cutils/properties.h>
+
 #include "SensorBase.h"
 
 /*****************************************************************************/
 
+// static vars
+bool SensorBase::PROCESS_VERBOSE = false;
+bool SensorBase::EXTRA_VERBOSE = false;
+bool SensorBase::SYSFS_VERBOSE = false;
+
+bool SensorBase::FUNC_ENTRY = false;
+bool SensorBase::HANDLER_ENTRY = false;
+bool SensorBase::ENG_VERBOSE = false;
+bool SensorBase::INPUT_DATA = false;
+bool SensorBase::HANDLER_DATA = false;
+
 SensorBase::SensorBase(const char* dev_name,
-                       const char* data_name) : dev_name(dev_name),
-                                                data_name(data_name),
-                                                dev_fd(-1),
-                                                data_fd(-1)
+                       const char* data_name) 
+                        : dev_name(dev_name),
+                          data_name(data_name),
+                          dev_fd(-1),
+                          data_fd(-1)
 {
     if (data_name) {
         data_fd = openInput(data_name);
+    }
+
+    char value[PROPERTY_VALUE_MAX];
+    property_get("invn.hal.verbose.basic", value, "0");
+    if (atoi(value)) {
+        PROCESS_VERBOSE = true;
+    }
+    property_get("invn.hal.verbose.extra", value, "0");
+    if (atoi(value)) {
+        EXTRA_VERBOSE = true;
+    }
+    property_get("invn.hal.verbose.sysfs", value, "0");
+    if (atoi(value)) {
+        SYSFS_VERBOSE = true;
+    }
+    property_get("invn.hal.verbose.engineering", value, "0");
+    if (atoi(value)) {
+        ENG_VERBOSE = true;
+    }
+    property_get("invn.hal.entry.function", value, "0");
+    if (atoi(value)) {
+        FUNC_ENTRY = true;
+    }
+    property_get("invn.hal.entry.handler", value, "0");
+    if (atoi(value)) {
+        HANDLER_ENTRY = true;
+    }
+    property_get("invn.hal.data.input", value, "0");
+    if (atoi(value)) {
+        INPUT_DATA = true;
+    }
+    property_get("invn.hal.data.handler", value, "0");
+    if (atoi(value)) {
+        HANDLER_DATA = true;
     }
 }
 
@@ -147,6 +196,11 @@ int SensorBase::query(int what, int* value)
 }
 
 int SensorBase::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
+{
+    return 0;
+}
+
+int SensorBase::flush(int handle)
 {
     return 0;
 }

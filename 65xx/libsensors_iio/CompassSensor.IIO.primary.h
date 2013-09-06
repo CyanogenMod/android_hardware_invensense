@@ -74,8 +74,6 @@ private:
     struct sysfs_attrbs {
        char *chip_enable;
        char *in_timestamp_en;
-       char *trigger_name;
-       char *current_trigger;
        char *buffer_length;
 
        char *compass_enable;

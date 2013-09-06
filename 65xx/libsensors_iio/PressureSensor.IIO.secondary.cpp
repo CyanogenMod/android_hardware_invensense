@@ -36,18 +36,6 @@
 /* dynamically get this when driver supports it */
 #define CHIP_ID "BMP280"
 
-/* return the current time in nanoseconds */
-extern int64_t now_ns(void);
-
-inline int64_t now_ns(void)
-{
-    struct timespec ts;
-
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    LOGV_IF(EXTRA_VERBOSE, "Time %lld", (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec);
-    return (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
-}
-
 //#define TIMER (1)
 #define DEFAULT_POLL_TIME 300
 #define PRESSURE_MAX_SYSFS_ATTRB sizeof(pressureSysFs) / sizeof(char*)
@@ -61,16 +49,16 @@ static struct timespec t_pre;
 PressureSensor::PressureSensor(const char *sysfs_path) 
                   : SensorBase(NULL, NULL),
                     pressure_fd(-1)
-{                                     
+{
     VFUNC_LOG;
 
     mSysfsPath = sysfs_path;
-    LOGI("pressuresensor path: %s", mSysfsPath);
+    LOGV_IF(ENG_VERBOSE, "pressuresensor path: %s", mSysfsPath);
     if(inv_init_sysfs_attributes()) {
         LOGE("Error Instantiating Pressure Sensor\n");
         return;
     } else {
-        LOGI("HAL:Secondary Chip Id: %s", CHIP_ID);
+        LOGI_IF(PROCESS_VERBOSE, "HAL:Secondary Chip Id: %s", CHIP_ID);
     }
 }
 
@@ -103,7 +91,7 @@ int PressureSensor::enable(int32_t handle, int en)
 
     int res = 0;
 
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs: echo %d > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
             en, pressureSysFs.pressure_enable, getTimestamp());
     res = write_sysfs_int(pressureSysFs.pressure_enable, en);
 
@@ -117,7 +105,7 @@ int PressureSensor::setDelay(int32_t handle, int64_t ns)
     int res = 0;
 
     mDelay = int(1000000000.f / ns);
-    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs: echo %lld > %s (%lld)",
+    LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %lld > %s (%lld)",
             mDelay, pressureSysFs.pressure_rate, getTimestamp());
     res = write_sysfs_int(pressureSysFs.pressure_rate, mDelay);
      
@@ -175,6 +163,7 @@ void PressureSensor::fillList(struct sensor_t *list)
             list->resolution = PRESSURE_BMP280_RESOLUTION;
             list->power = PRESSURE_BMP280_POWER;
             list->minDelay = PRESSURE_BMP280_MINDELAY;
+            mMinDelay = list->minDelay;
             return;
         }      
     }
@@ -185,6 +174,8 @@ void PressureSensor::fillList(struct sensor_t *list)
     list->resolution = PRESSURE_BMP280_RESOLUTION;
     list->power = PRESSURE_BMP280_POWER;
     list->minDelay = PRESSURE_BMP280_MINDELAY;
+    mMinDelay = list->minDelay;
+    return;
 }
 
 int PressureSensor::inv_init_sysfs_attributes(void)
