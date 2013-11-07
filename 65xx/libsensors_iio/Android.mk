@@ -30,8 +30,6 @@ LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
 MAJOR_VERSION :=$(shell echo $(PLATFORM_VERSION) | cut -f1 -d.)
 MINOR_VERSION :=$(shell echo $(PLATFORM_VERSION) | cut -f2 -d.)
 VERSION_JB :=$(shell test $(MAJOR_VERSION) -gt 4 -o $(MAJOR_VERSION) -eq 4 -a $(MINOR_VERSION) -gt 0 && echo true)
-$(info MAJOR_VERSION=$(MAJOR_VERSION))
-$(info MINOR_VERSION=$(MINOR_VERSION))
 #ANDROID version check END
 VERSION_JB:=true
 ifeq ($(VERSION_JB),true)
