@@ -95,7 +95,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 # Build a temporary HAL that links the InvenSense .so
 include $(CLEAR_VARS)
-ifneq ($(filter guppy guppypdk, $(TARGET_DEVICE)),)
+ifneq ($(filter dory guppy guppypdk, $(TARGET_DEVICE)),)
 LOCAL_MODULE := sensors.invensense
 else
 ifeq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
