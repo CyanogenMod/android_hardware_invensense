@@ -1,8 +1,13 @@
 # Can't have both 65xx and 60xx sensors.
-ifneq ($(filter dory guppy guppypdk hammerhead, $(TARGET_DEVICE)),)
+ifneq ($(filter hammerhead, $(TARGET_DEVICE)),)
 # hammerhead expects 65xx sensors.
 include $(call all-named-subdir-makefiles,65xx)
 else
+ifneq ($(filter guppy dory platina, $(TARGET_DEVICE)),)
+# dory, guppy, and platina expect 6515 sensors.
+include $(call all-named-subdir-makefiles,6515)
+else
 # manta expects 60xx sensors.
 include $(call all-named-subdir-makefiles,60xx)
+endif
 endif
