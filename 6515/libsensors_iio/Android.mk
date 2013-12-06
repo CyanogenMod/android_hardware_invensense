@@ -29,12 +29,14 @@ LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
 # ANDROID version check
 MAJOR_VERSION :=$(shell echo $(PLATFORM_VERSION) | cut -f1 -d.)
 MINOR_VERSION :=$(shell echo $(PLATFORM_VERSION) | cut -f2 -d.)
-VERSION_JB :=$(shell test $(MAJOR_VERSION) -gt 4 -o $(MAJOR_VERSION) -eq 4 -a $(MINOR_VERSION) -gt 0 && echo true)
+VERSION_KK :=$(shell test $(MAJOR_VERSION) -gt 4 -o $(MAJOR_VERSION) -eq 4 -a $(MINOR_VERSION) -gt 3 && echo true)
 #$(info MAJOR_VERSION=$(MAJOR_VERSION))
 #$(info MINOR_VERSION=$(MINOR_VERSION))
 #ANDROID version check END
-VERSION_JB:=true
-ifeq ($(VERSION_JB),true)
+
+ifeq ($(VERSION_KK),true)
+LOCAL_CFLAGS += -DANDROID_KITKAT
+else
 LOCAL_CFLAGS += -DANDROID_JELLYBEAN
 endif
 
@@ -97,14 +99,19 @@ include $(BUILD_SHARED_LIBRARY)
 
 # Build a temporary HAL that links the InvenSense .so
 include $(CLEAR_VARS)
-ifeq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
-ifneq ($(filter manta grouper tilapia, $(TARGET_DEVICE)),)
-#LOCAL_MODULE := sensors.invensense
+ifeq ($(filter eng, userdebug, $(TARGET_BUILD_VARIANT)),)
+ifneq ($(filter manta full_grouper tilapia, $(TARGET_PRODUCT)),)
+LOCAL_MODULE := sensors.full_grouper
 else
-LOCAL_MODULE := sensors.${TARGET_PRODUCT}
+ifneq ($(filter aosp_hammerhead, $(TARGET_PRODUCT)),)
+LOCAL_MODULE := sensors.hammerhead
+endif
+ifneq ($(filter platina dory guppy, $(TARGET_PRODUCT)),)
+LOCAL_MODULE := sensors.invensense
+endif
 endif
 else    # eng & userdebug builds
-LOCAL_MODULE := sensors.${TARGET_PRODUCT}
+LOCAL_MODULE := sensors.invensense
 endif   # eng & userdebug builds
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 
@@ -119,9 +126,47 @@ LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
 
-ifeq ($(VERSION_JB),true)
+ifeq ($(VERSION_KK),true)
+LOCAL_CFLAGS += -DANDROID_KITKAT
+else
 LOCAL_CFLAGS += -DANDROID_JELLYBEAN
 endif
+
+ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
+ifneq ($(COMPILE_INVENSENSE_COMPASS_CAL),0)
+LOCAL_CFLAGS += -DINVENSENSE_COMPASS_CAL
+endif
+ifeq ($(COMPILE_THIRD_PARTY_ACCEL),1)
+LOCAL_CFLAGS += -DTHIRD_PARTY_ACCEL
+endif
+ifeq ($(COMPILE_INVENSENSE_SENSOR_ON_PRIMARY_BUS), 1)
+LOCAL_SRC_FILES += CompassSensor.IIO.primary.cpp
+LOCAL_CFLAGS += -DSENSOR_ON_PRIMARY_BUS
+else
+LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
+endif
+else # release builds, default
+LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
+endif # userdebug
+
+ifeq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
+ifneq ($(filter manta grouper tilapia, $(TARGET_DEVICE)),)
+# it's already defined in some other Makefile for production builds
+#LOCAL_SRC_FILES := sensors_mpl.cpp
+else
+LOCAL_SRC_FILES := sensors_mpl.cpp
+endif
+else    # eng & userdebug builds
+LOCAL_SRC_FILES := sensors_mpl.cpp
+endif   # eng & userdebug builds
+
+LOCAL_SHARED_LIBRARIES := libinvensense_hal
+LOCAL_SHARED_LIBRARIES += libcutils
+LOCAL_SHARED_LIBRARIES += libutils
+LOCAL_SHARED_LIBRARIES += libdl
+LOCAL_SHARED_LIBRARIES += liblog
+LOCAL_SHARED_LIBRARIES += libmllite
+include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmplmpu
