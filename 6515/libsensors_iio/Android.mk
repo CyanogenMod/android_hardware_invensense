@@ -25,20 +25,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_OWNER := invensense
 
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
-
-# ANDROID version check
-MAJOR_VERSION :=$(shell echo $(PLATFORM_VERSION) | cut -f1 -d.)
-MINOR_VERSION :=$(shell echo $(PLATFORM_VERSION) | cut -f2 -d.)
-VERSION_KK :=$(shell test $(MAJOR_VERSION) -gt 4 -o $(MAJOR_VERSION) -eq 4 -a $(MINOR_VERSION) -gt 3 && echo true)
-#$(info MAJOR_VERSION=$(MAJOR_VERSION))
-#$(info MINOR_VERSION=$(MINOR_VERSION))
-#ANDROID version check END
-
-ifeq ($(VERSION_KK),true)
 LOCAL_CFLAGS += -DANDROID_KITKAT
-else
-LOCAL_CFLAGS += -DANDROID_JELLYBEAN
-endif
 
 ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
 ifneq ($(COMPILE_INVENSENSE_COMPASS_CAL),0)
@@ -125,12 +112,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include/linux
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
-
-ifeq ($(VERSION_KK),true)
 LOCAL_CFLAGS += -DANDROID_KITKAT
-else
-LOCAL_CFLAGS += -DANDROID_JELLYBEAN
-endif
 
 ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
 ifneq ($(COMPILE_INVENSENSE_COMPASS_CAL),0)
