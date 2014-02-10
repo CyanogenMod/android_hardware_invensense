@@ -236,8 +236,8 @@ inv_error_t inv_serial_open(char const *port, void **sl_handle)
     if (NULL == port) {
         port = I2CDEV;
     }
-    *sl_handle = (void*) open(port, O_RDWR);
-    if(sl_handle < 0) {
+    *sl_handle = (void*)(uintptr_t) open(port, O_RDWR);
+    if((intptr_t)*sl_handle < 0) {
         /* ERROR HANDLING; you can check errno to see what went wrong */
         MPL_LOGE("inv_serial_open\n");
         MPL_LOGE("I2C Error %d: Cannot open Adapter %s\n", errno, port);
@@ -253,7 +253,7 @@ inv_error_t inv_serial_close(void *sl_handle)
 {
     INVENSENSE_FUNC_START;
 
-    close((int)sl_handle);
+    close((int)(uintptr_t)sl_handle);
 
     return INV_SUCCESS;
 }
@@ -291,7 +291,7 @@ inv_error_t inv_serial_write(void *sl_handle,
     msg.length  = length;
     msg.data    = (unsigned char*)data;
 
-    if ((result = ioctl((int)sl_handle, MPU_WRITE, &msg))) {
+    if ((result = ioctl((int)(uintptr_t)sl_handle, MPU_WRITE, &msg))) {
         MPL_LOGE("I2C Error: could not write: R:%02x L:%d %d \n",
                  data[0], length, result);
        return result;
@@ -328,7 +328,7 @@ inv_error_t inv_serial_read(void *sl_handle,
     msg.length  = length;
     msg.data    = data;
 
-    result = ioctl((int)sl_handle, MPU_READ, &msg);
+    result = ioctl((int)(uintptr_t)sl_handle, MPU_READ, &msg);
 
     if (result != INV_SUCCESS) {
         MPL_LOGE("I2C Error %08x: could not read: R:%02x L:%d\n",
@@ -363,7 +363,7 @@ inv_error_t inv_serial_write_mem(void *sl_handle,
     msg.length  = length;
     msg.data    = (unsigned char *)data;
 
-    result = ioctl((int)sl_handle, MPU_WRITE_MEM, &msg);
+    result = ioctl((int)(uintptr_t)sl_handle, MPU_WRITE_MEM, &msg);
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
@@ -399,7 +399,7 @@ inv_error_t inv_serial_read_mem(void *sl_handle,
     msg.length  = length;
     msg.data    = data;
 
-    result = ioctl((int)sl_handle, MPU_READ_MEM, &msg);
+    result = ioctl((int)(uintptr_t)sl_handle, MPU_READ_MEM, &msg);
     if (result != INV_SUCCESS) {
         MPL_LOGE("I2C Error %08x: could not read memory: A:%04x L:%d\n",
                  result, memAddr, length);
@@ -435,7 +435,7 @@ inv_error_t inv_serial_write_fifo(void *sl_handle,
     msg.length  = length;
     msg.data    = (unsigned char *)data;
 
-    result = ioctl((int)sl_handle, MPU_WRITE_FIFO, &msg);
+    result = ioctl((int)(uintptr_t)sl_handle, MPU_WRITE_FIFO, &msg);
     if (result != INV_SUCCESS) {
         MPL_LOGE("I2C Error: could not write fifo: %02x %02x\n",
                   MPUREG_FIFO_R_W, length);
@@ -471,7 +471,7 @@ inv_error_t inv_serial_read_fifo(void *sl_handle,
     msg.length  = length;
     msg.data    = data;
 
-    result = ioctl((int)sl_handle, MPU_READ_FIFO, &msg);
+    result = ioctl((int)(uintptr_t)sl_handle, MPU_READ_FIFO, &msg);
     if (result != INV_SUCCESS) {
         MPL_LOGE("I2C Error %08x: could not read fifo: R:%02x L:%d\n",
                  result, MPUREG_FIFO_R_W, length);

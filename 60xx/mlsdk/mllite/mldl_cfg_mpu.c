@@ -84,9 +84,9 @@ void mpu_print_cfg(struct mldl_cfg * mldl_cfg)
 #endif
 
     if (mldl_cfg->accel) {
-        MPL_LOGD("slave_accel->suspend      = %02x\n", (int)mldl_cfg->accel->suspend);
-        MPL_LOGD("slave_accel->resume       = %02x\n", (int)mldl_cfg->accel->resume);
-        MPL_LOGD("slave_accel->read         = %02x\n", (int)mldl_cfg->accel->read);
+        MPL_LOGD("slave_accel->suspend      = %p\n", mldl_cfg->accel->suspend);
+        MPL_LOGD("slave_accel->resume       = %p\n", mldl_cfg->accel->resume);
+        MPL_LOGD("slave_accel->read         = %p\n", mldl_cfg->accel->read);
         MPL_LOGD("slave_accel->type         = %02x\n", mldl_cfg->accel->type);
         MPL_LOGD("slave_accel->read_reg     = %02x\n",
                  mldl_cfg->accel->read_reg);
@@ -100,9 +100,9 @@ void mpu_print_cfg(struct mldl_cfg * mldl_cfg)
     }
 
     if (mldl_cfg->compass) {
-        MPL_LOGD("slave_compass->suspend    = %02x\n", (int)mldl_cfg->compass->suspend);
-        MPL_LOGD("slave_compass->resume     = %02x\n", (int)mldl_cfg->compass->resume);
-        MPL_LOGD("slave_compass->read       = %02x\n", (int)mldl_cfg->compass->read);
+        MPL_LOGD("slave_compass->suspend    = %p\n", mldl_cfg->compass->suspend);
+        MPL_LOGD("slave_compass->resume     = %p\n", mldl_cfg->compass->resume);
+        MPL_LOGD("slave_compass->read       = %p\n", mldl_cfg->compass->read);
         MPL_LOGD("slave_compass->type       = %02x\n", mldl_cfg->compass->type);
         MPL_LOGD("slave_compass->read_reg   = %02x\n",
                  mldl_cfg->compass->read_reg);
@@ -116,9 +116,9 @@ void mpu_print_cfg(struct mldl_cfg * mldl_cfg)
     }
 
     if (mldl_cfg->pressure) {
-        MPL_LOGD("slave_pressure->suspend    = %02x\n", (int)mldl_cfg->pressure->suspend);
-        MPL_LOGD("slave_pressure->resume     = %02x\n", (int)mldl_cfg->pressure->resume);
-        MPL_LOGD("slave_pressure->read       = %02x\n", (int)mldl_cfg->pressure->read);
+        MPL_LOGD("slave_pressure->suspend    = %p\n", mldl_cfg->pressure->suspend);
+        MPL_LOGD("slave_pressure->resume     = %p\n", mldl_cfg->pressure->resume);
+        MPL_LOGD("slave_pressure->read       = %p\n", mldl_cfg->pressure->read);
         MPL_LOGD("slave_pressure->type       = %02x\n", mldl_cfg->pressure->type);
         MPL_LOGD("slave_pressure->read_reg   = %02x\n",
                  mldl_cfg->pressure->read_reg);
@@ -131,7 +131,7 @@ void mpu_print_cfg(struct mldl_cfg * mldl_cfg)
         MPL_LOGD("slave_pressure             = NULL\n");
     }
 
-    MPL_LOGD("accel->get_slave_descr    = %x\n",(unsigned int) accel->get_slave_descr);
+    MPL_LOGD("accel->get_slave_descr    = %p\n",accel->get_slave_descr);
     MPL_LOGD("accel->adapt_num          = %02x\n", accel->adapt_num);
     MPL_LOGD("accel->bus                = %02x\n", accel->bus);
     MPL_LOGD("accel->address            = %02x\n", accel->address);
@@ -142,7 +142,7 @@ void mpu_print_cfg(struct mldl_cfg * mldl_cfg)
              accel->orientation[0],accel->orientation[1],accel->orientation[2],
              accel->orientation[3],accel->orientation[4],accel->orientation[5],
              accel->orientation[6],accel->orientation[7],accel->orientation[8]);
-    MPL_LOGD("compass->get_slave_descr  = %x\n",(unsigned int) compass->get_slave_descr);
+    MPL_LOGD("compass->get_slave_descr  = %p\n",compass->get_slave_descr);
     MPL_LOGD("compass->adapt_num        = %02x\n", compass->adapt_num);
     MPL_LOGD("compass->bus              = %02x\n", compass->bus);
     MPL_LOGD("compass->address          = %02x\n", compass->address);
@@ -153,7 +153,7 @@ void mpu_print_cfg(struct mldl_cfg * mldl_cfg)
              compass->orientation[0],compass->orientation[1],compass->orientation[2],
              compass->orientation[3],compass->orientation[4],compass->orientation[5],
              compass->orientation[6],compass->orientation[7],compass->orientation[8]);
-    MPL_LOGD("pressure->get_slave_descr  = %x\n",(unsigned int) pressure->get_slave_descr);
+    MPL_LOGD("pressure->get_slave_descr  = %p\n",pressure->get_slave_descr);
     MPL_LOGD("pressure->adapt_num        = %02x\n", pressure->adapt_num);
     MPL_LOGD("pressure->bus              = %02x\n", pressure->bus);
     MPL_LOGD("pressure->address          = %02x\n", pressure->address);
@@ -175,8 +175,8 @@ void mpu_print_cfg(struct mldl_cfg * mldl_cfg)
              pdata->orientation[3],pdata->orientation[4],pdata->orientation[5],
              pdata->orientation[6],pdata->orientation[7],pdata->orientation[8]);
 
-    MPL_LOGD("Struct sizes: mldl_cfg: %d, "
-             "ext_slave_descr:%d, mpu_platform_data:%d: RamOffset: %d\n", 
+    MPL_LOGD("Struct sizes: mldl_cfg: %zu, "
+             "ext_slave_descr:%zu, mpu_platform_data:%zu: RamOffset: %zu\n",
              sizeof(struct mldl_cfg), sizeof(struct ext_slave_descr), 
              sizeof(struct mpu_platform_data), 
              offsetof(struct mldl_cfg, ram));
@@ -210,7 +210,7 @@ int inv_mpu_open(struct mldl_cfg *mldl_cfg,
                  void *pressure_handle)
 {
     int result;
-    result = ioctl((int)mlsl_handle, MPU_GET_MPU_CONFIG, mldl_cfg);
+    result = ioctl((int)(uintptr_t)mlsl_handle, MPU_GET_MPU_CONFIG, mldl_cfg);
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
@@ -259,17 +259,17 @@ int inv_mpu_resume(struct mldl_cfg* mldl_cfg,
     int result;
     
     mldl_cfg->requested_sensors = sensors;
-    result = ioctl((int)mlsl_handle, MPU_SET_MPU_CONFIG, mldl_cfg);
+    result = ioctl((int)(uintptr_t)mlsl_handle, MPU_SET_MPU_CONFIG, mldl_cfg);
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
     }
-    result = ioctl((int)mlsl_handle, MPU_RESUME, NULL);
+    result = ioctl((int)(uintptr_t)mlsl_handle, MPU_RESUME, NULL);
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
     }
-    result = ioctl((int)mlsl_handle, MPU_GET_MPU_CONFIG, mldl_cfg);
+    result = ioctl((int)(uintptr_t)mlsl_handle, MPU_GET_MPU_CONFIG, mldl_cfg);
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
@@ -294,17 +294,17 @@ int inv_mpu_suspend(struct mldl_cfg *mldl_cfg,
     //MPL_LOGI("%s: suspending sensors to %04lx\n", __func__,
     //         mldl_cfg->requested_sensors);
 
-    result = ioctl((int)mlsl_handle, MPU_SET_MPU_CONFIG, mldl_cfg);
+    result = ioctl((int)(uintptr_t)mlsl_handle, MPU_SET_MPU_CONFIG, mldl_cfg);
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
     }
-    result = ioctl((int)mlsl_handle, MPU_SUSPEND, NULL);
+    result = ioctl((int)(uintptr_t)mlsl_handle, MPU_SUSPEND, NULL);
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
     }
-    result = ioctl((int)mlsl_handle, MPU_GET_MPU_CONFIG, mldl_cfg);
+    result = ioctl((int)(uintptr_t)mlsl_handle, MPU_GET_MPU_CONFIG, mldl_cfg);
     if (result) {
         LOG_RESULT_LOCATION(result);
         return result;
@@ -343,13 +343,13 @@ int inv_mpu_slave_read(struct mldl_cfg *mldl_cfg,
 
     switch (slave->type) {
     case EXT_SLAVE_TYPE_ACCELEROMETER:
-        result = ioctl((int)gyro_handle, MPU_READ_ACCEL, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_READ_ACCEL, data);
         break;
     case EXT_SLAVE_TYPE_COMPASS:
-        result = ioctl((int)gyro_handle, MPU_READ_COMPASS, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_READ_COMPASS, data);
         break;
     case EXT_SLAVE_TYPE_PRESSURE:
-        result = ioctl((int)gyro_handle, MPU_READ_PRESSURE, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_READ_PRESSURE, data);
         break;
     default:
         LOG_RESULT_LOCATION(INV_ERROR_INVALID_PARAMETER);
@@ -387,21 +387,21 @@ int inv_mpu_slave_config(struct mldl_cfg *mldl_cfg,
 
     switch (slave->type) {
     case EXT_SLAVE_TYPE_ACCELEROMETER:
-        result = ioctl((int)gyro_handle, MPU_CONFIG_ACCEL, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_CONFIG_ACCEL, data);
         if (result) {
             LOG_RESULT_LOCATION(result);
             return result;
         }
         break;
     case EXT_SLAVE_TYPE_COMPASS:
-        result = ioctl((int)gyro_handle, MPU_CONFIG_COMPASS, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_CONFIG_COMPASS, data);
         if (result) {
             LOG_RESULT_LOCATION(result);
             return result;
         }
         break;
     case EXT_SLAVE_TYPE_PRESSURE:
-        result = ioctl((int)gyro_handle, MPU_CONFIG_PRESSURE, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_CONFIG_PRESSURE, data);
         if (result) {
             LOG_RESULT_LOCATION(result);
             return result;
@@ -445,21 +445,21 @@ int inv_mpu_get_slave_config(struct mldl_cfg *mldl_cfg,
     }
     switch (slave->type) {
     case EXT_SLAVE_TYPE_ACCELEROMETER:
-        result = ioctl((int)gyro_handle, MPU_GET_CONFIG_ACCEL, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_GET_CONFIG_ACCEL, data);
         if (result) {
             LOG_RESULT_LOCATION(result);
             return result;
         }
         break;
     case EXT_SLAVE_TYPE_COMPASS:
-        result = ioctl((int)gyro_handle, MPU_GET_CONFIG_COMPASS, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_GET_CONFIG_COMPASS, data);
         if (result) {
             LOG_RESULT_LOCATION(result);
             return result;
         }
         break;
     case EXT_SLAVE_TYPE_PRESSURE:
-        result = ioctl((int)gyro_handle, MPU_GET_CONFIG_PRESSURE, data);
+        result = ioctl((int)(uintptr_t)gyro_handle, MPU_GET_CONFIG_PRESSURE, data);
         if (result) {
             LOG_RESULT_LOCATION(result);
             return result;

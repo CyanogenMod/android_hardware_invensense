@@ -1047,7 +1047,7 @@ int MPLSensor::getTimerFd() const
 
 int MPLSensor::getPowerFd() const
 {
-    int hdl = (int) inv_get_serial_handle();
+    int hdl = (uintptr_t) inv_get_serial_handle();
     //ALOGV("MPLSensor::getPowerFd returning %d", hdl);
     return hdl;
 }
@@ -1068,7 +1068,7 @@ void MPLSensor::handlePowerEvent()
     VFUNC_LOG;
     mpuirq_data irqd;
 
-    int fd = (int) inv_get_serial_handle();
+    int fd = (uintptr_t) inv_get_serial_handle();
     read(fd, &irqd, sizeof(irqd));
 
     if (irqd.data == MPU_PM_EVENT_SUSPEND_PREPARE) {

@@ -30,7 +30,8 @@ extern "C" {
 #endif
 
 #if defined(LINUX) || defined(__KERNEL__)
-typedef unsigned int HANDLE;
+#include <stdint.h>
+typedef uintptr_t HANDLE;
 #endif
 
 	/* ------------ */
