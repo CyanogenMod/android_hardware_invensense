@@ -93,7 +93,7 @@ else
 ifneq ($(filter aosp_hammerhead, $(TARGET_PRODUCT)),)
 LOCAL_MODULE := sensors.hammerhead
 endif
-ifneq ($(filter platina dory guppy, $(TARGET_PRODUCT)),)
+ifneq ($(filter dory guppy, $(TARGET_DEVICE)),)
 LOCAL_MODULE := sensors.invensense
 endif
 endif
