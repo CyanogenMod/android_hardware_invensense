@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2012 Invensense, Inc.
+* Copyright (C) 2014 Invensense, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -44,6 +44,11 @@
 #define COMPASS_AKM8963_RESOLUTION      (0.15f)
 #define COMPASS_AKM8963_POWER           (10.f)
 #define COMPASS_AKM8963_MINDELAY        (10000)
+//COMPASS_ID_AK09911
+#define COMPASS_AKM9911_RANGE           (9830.f)
+#define COMPASS_AKM9911_RESOLUTION      (0.60f)
+#define COMPASS_AKM9911_POWER           (10.f)
+#define COMPASS_AKM9911_MINDELAY        (10000)
 //COMPASS_ID_AMI30X
 #define COMPASS_AMI30X_RANGE            (5461.f)
 #define COMPASS_AMI30X_RESOLUTION       (0.9f)

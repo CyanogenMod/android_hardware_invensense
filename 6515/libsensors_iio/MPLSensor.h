@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2012 Invensense, Inc.
+* Copyright (C) 2014 Invensense, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -186,6 +186,7 @@ public:
     int selectAndSetQuaternion(int batchMode, int mEnabled, long long featureMask);
     int checkBatchEnabled();
     int setBatch(int en, int toggleEnable);
+    int writeBatchTimeout(int en);
     int32_t getEnableMask() { return mEnabled; }
     void getHandle(int32_t handle, int &what, android::String8 &sname);
 
@@ -199,7 +200,6 @@ public:
     virtual bool hasStepCountPendingEvents();
     int populateSensorList(struct sensor_t *list, int len);
 
-    int readAccelEvents(sensors_event_t* data, int count);
     void buildCompassEvent();
     void buildMpuEvent();
     int checkValidHeader(unsigned short data_format);
@@ -263,10 +263,13 @@ protected:
     int enablePedStandaloneData(int en);
     int enablePedQuaternion(int);
     int enablePedQuaternionData(int);
+    int setPedQuaternionRate(int64_t wanted);
     int enable6AxisQuaternion(int);
     int enable6AxisQuaternionData(int);
+    int set6AxisQuaternionRate(int64_t wanted);
     int enableLPQuaternion(int);
     int enableQuaternionData(int);
+    int setQuaternionRate(int64_t wanted);
     int enableAccelPedometer(int);
     int enableAccelPedData(int);
     int onDmp(int);
@@ -292,6 +295,7 @@ protected:
     int computeAndSetDmpState(void);
     int enablePedometer(int);
     int enablePedIndicator(int en);
+    int checkPedStandaloneBatched(void);
     int checkPedStandaloneEnabled(void);
     int checkPedQuatEnabled();
     int check6AxisQuatEnabled();
@@ -348,7 +352,7 @@ protected:
 
     uint32_t mEnabled;
     uint32_t mBatchEnabled;
-    int32_t mFlushSensorEnabled;
+    android::Vector<int> mFlushSensorEnabledVector;
     uint32_t mOldBatchEnabledMask;
     int64_t mBatchTimeoutInMs;
     sensors_event_t mPendingEvents[NumSensors];
@@ -489,6 +493,7 @@ protected:
        char *pedometer_int_on;
        char *event_pedometer;
        char *pedometer_steps;
+       char *pedometer_step_thresh;
        char *pedometer_counter;
        
        char *motion_lpa_on;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -414,8 +414,8 @@ void CompassSensor::fillList(struct sensor_t *list)
         }
         if(!strcmp(compass, "compass")
                 || !strcmp(compass, "INV_AK8975")
-                || !strcmp(compass, "AK8975")
-                || !strcmp(compass, "ak8975")) {
+                || !strcmp(compass, "AKM8975")
+                || !strcmp(compass, "akm8975")) {
             list->maxRange = COMPASS_AKM8975_RANGE;
             list->resolution = COMPASS_AKM8975_RESOLUTION;
             list->power = COMPASS_AKM8975_POWER;
@@ -425,12 +425,23 @@ void CompassSensor::fillList(struct sensor_t *list)
         }
         if(!strcmp(compass, "compass")
                 || !strcmp(compass, "INV_AK8963")
-                || !strcmp(compass, "AK8963")
-                || !strcmp(compass, "ak8963")) {
+                || !strcmp(compass, "AKM8963")
+                || !strcmp(compass, "akm8963")) {
             list->maxRange = COMPASS_AKM8963_RANGE;
             list->resolution = COMPASS_AKM8963_RESOLUTION;
             list->power = COMPASS_AKM8963_POWER;
             list->minDelay = COMPASS_AKM8963_MINDELAY;
+            mMinDelay = list->minDelay;
+            return;
+        }
+        if(!strcmp(compass, "compass")
+                || !strcmp(compass, "INV_AK09911")
+                || !strcmp(compass, "AK09911")
+                || !strcmp(compass, "ak09911")) {
+            list->maxRange = COMPASS_AKM9911_RANGE;
+            list->resolution = COMPASS_AKM9911_RESOLUTION;
+            list->power = COMPASS_AKM9911_POWER;
+            list->minDelay = COMPASS_AKM9911_MINDELAY;
             mMinDelay = list->minDelay;
             return;
         }

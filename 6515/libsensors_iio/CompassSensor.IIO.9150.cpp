@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 The Android Open Source Project
+ * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -319,6 +319,16 @@ void CompassSensor::fillList(struct sensor_t *list)
             list->resolution = COMPASS_AKM8963_RESOLUTION;
             list->power = COMPASS_AKM8963_POWER;
             list->minDelay = COMPASS_AKM8963_MINDELAY;
+            return;
+        }
+        if(!strcmp(compass, "compass")
+                || !strcmp(compass, "INV_AK09911")
+                || !strcmp(compass, "AK09911")
+                || !strcmp(compass, "ak09911")) {
+            list->maxRange = COMPASS_AKM9911_RANGE;
+            list->resolution = COMPASS_AKM9911_RESOLUTION;
+            list->power = COMPASS_AKM9911_POWER;
+            list->minDelay = COMPASS_AKM9911_MINDELAY;
             return;
         }
         if(!strcmp(compass, "compass")
