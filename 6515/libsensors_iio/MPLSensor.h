@@ -151,7 +151,7 @@ class PressureSensor;
 #define ENABLE_LP_QUAT_FEAT
 
 /* Enable Pressure sensor support */
-#define ENABLE_PRESSURE
+#undef ENABLE_PRESSURE
 
 /* Screen Orientation is not currently supported */
 int isDmpScreenAutoRotationEnabled()
