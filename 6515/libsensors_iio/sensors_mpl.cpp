@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2012 Invensense, Inc.
+* Copyright (C) 2014 Invensense, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -103,17 +103,13 @@ private:
         dmpOrient,
         dmpSign,
         dmpPed,
-        numSensorDrivers,   // wake pipe goes here
+        numSensorDrivers,
         numFds,
     };
 
     struct pollfd mPollFds[numFds];
     SensorBase *mSensor;
     CompassSensor *mCompassSensor;
-
-    static const size_t wake = numSensorDrivers;
-    static const char WAKE_MESSAGE = 'W';
-    int mWritePipeFd;
 };
 
 /******************************************************************************/
@@ -154,19 +150,7 @@ sensors_poll_context_t::sensors_poll_context_t() {
 
     mPollFds[dmpPed].fd = ((MPLSensor*) mSensor)->getDmpPedometerFd();
     mPollFds[dmpPed].events = POLLPRI;
-    mPollFds[dmpPed].revents = 0;
-
-    /* Timer based sensor initialization */
-    int wakeFds[2];
-    int result = pipe(wakeFds);
-    LOGE_IF(result<0, "error creating wake pipe (%s)", strerror(errno));
-    fcntl(wakeFds[0], F_SETFL, O_NONBLOCK);
-    fcntl(wakeFds[1], F_SETFL, O_NONBLOCK);
-    mWritePipeFd = wakeFds[1];
-
-    mPollFds[numSensorDrivers].fd = wakeFds[0];
-    mPollFds[numSensorDrivers].events = POLLIN;
-    mPollFds[numSensorDrivers].revents = 0;
+    mPollFds[dmpPed].revents = 0;   
 }
 
 sensors_poll_context_t::~sensors_poll_context_t() {
@@ -176,20 +160,13 @@ sensors_poll_context_t::~sensors_poll_context_t() {
     for (int i = 0; i < numSensorDrivers; i++) {
         close(mPollFds[i].fd);
     }
-    close(mWritePipeFd);
 }
 
 int sensors_poll_context_t::activate(int handle, int enabled) {
     FUNC_LOG;
 
     int err;
-    err = mSensor->enable(handle, enabled);
-    if (!err) {
-        const char wakeMessage(WAKE_MESSAGE);
-        int result = write(mWritePipeFd, &wakeMessage, 1);
-        LOGE_IF(result < 0, 
-                "error sending wake message (%s)", strerror(errno));
-    }
+    err = mSensor->enable(handle, enabled);   
     return err;
 }
 
