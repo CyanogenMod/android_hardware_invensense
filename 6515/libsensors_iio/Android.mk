@@ -1,4 +1,4 @@
-# Copyright (C) 2008 The Android Open Source Project
+# Copyright (C) 2014 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_OWNER := invensense
 
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
+
 LOCAL_CFLAGS += -DANDROID_KITKAT
 
 ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
@@ -89,12 +90,15 @@ include $(CLEAR_VARS)
 ifeq ($(filter eng, userdebug, $(TARGET_BUILD_VARIANT)),)
 ifneq ($(filter manta full_grouper tilapia, $(TARGET_PRODUCT)),)
 LOCAL_MODULE := sensors.full_grouper
+LOCAL_MODULE_OWNER := invensense
 else
 ifneq ($(filter aosp_hammerhead, $(TARGET_PRODUCT)),)
 LOCAL_MODULE := sensors.hammerhead
+LOCAL_MODULE_OWNER := invensense
 endif
 ifneq ($(filter dory guppy, $(TARGET_DEVICE)),)
 LOCAL_MODULE := sensors.invensense
+LOCAL_MODULE_OWNER := invensense
 endif
 endif
 else    # eng & userdebug builds
@@ -112,6 +116,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include/linux
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
+
 LOCAL_CFLAGS += -DANDROID_KITKAT
 
 ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
