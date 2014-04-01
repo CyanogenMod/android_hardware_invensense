@@ -35,7 +35,7 @@ __BEGIN_DECLS
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 #endif
 
-#define ENABLE_PRESSURE
+#undef ENABLE_PRESSURE
 
 enum {
     ID_GY = 0,
