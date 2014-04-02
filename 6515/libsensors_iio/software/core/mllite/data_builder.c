@@ -344,17 +344,17 @@ static int inv_raw_sensor_timestamp(int sensor_number, inv_time_t *ts)
         if (inv_data_builder.mode & INV_GYRO_NEW)
             if (sensors.gyro.timestamp_prev != sensors.gyro.timestamp)
                 status = 1;
-        return status;
-    case 2: // Compass
-        *ts = sensors.compass.timestamp;
-        if (inv_data_builder.mode & INV_MAG_NEW)
-            if (sensors.compass.timestamp_prev != sensors.compass.timestamp)
-                status = 1;
-        return status;
-    case 3: // Accel
+        return status; 
+    case 2: // Accel
         *ts = sensors.accel.timestamp;
         if (inv_data_builder.mode & INV_ACCEL_NEW)
             if (sensors.accel.timestamp_prev != sensors.accel.timestamp)
+                status = 1;
+        return status;
+   case 3: // Compass
+        *ts = sensors.compass.timestamp;
+        if (inv_data_builder.mode & INV_MAG_NEW)
+            if (sensors.compass.timestamp_prev != sensors.compass.timestamp)
                 status = 1;
         return status;
     default:
@@ -395,7 +395,7 @@ int inv_get_9_axis_timestamp(long sample_rate_us, inv_time_t *ts)
     if ((sensors.quat.status & (INV_QUAT_6AXIS | INV_SENSOR_ON)) == (INV_QUAT_6AXIS | INV_SENSOR_ON)) {
         // Sensor tied to compass or 6-axis
         idx = inv_pick_best_time_difference(td[0], td[1]);
-        idx *= 2; // Sensor number is 0 (Quat) or 2 (Compass)
+        idx *= 3; // Sensor number is 0 (Quat) or 3 (Compass)
         return inv_raw_sensor_timestamp(idx, ts);
     } else if ((sensors.accel.status & INV_SENSOR_ON) == 0) {
         return 0; // Accel must be on or 6-axis quat must be on
@@ -448,8 +448,8 @@ int inv_get_6_axis_compass_accel_timestamp(long sample_rate_us, inv_time_t *ts)
     }
 
     // At this point, we know compass & accel are both on.
-    td[0] = sample_rate_us - sensors.compass.sample_rate_us;
-    td[1] = sample_rate_us - sensors.accel.sample_rate_us;
+    td[0] = sample_rate_us - sensors.accel.sample_rate_us;
+    td[1] = sample_rate_us - sensors.compass.sample_rate_us;
     idx = inv_pick_best_time_difference(td[0], td[1]);
     idx += 2;
     return inv_raw_sensor_timestamp(idx, ts);
@@ -478,7 +478,7 @@ int inv_get_6_axis_gyro_accel_timestamp(long sample_rate_us, inv_time_t *ts)
     td[1] = sample_rate_us - sensors.accel.sample_rate_us;
     if ((sensors.quat.status & (INV_QUAT_3AXIS | INV_SENSOR_ON)) == (INV_QUAT_3AXIS | INV_SENSOR_ON)) {
         idx = inv_pick_best_time_difference(td[0], td[1]);
-        idx *= 3;
+        idx *= 2;
         // 0 = quat, 3=accel
         return inv_raw_sensor_timestamp(idx, ts);
     }
