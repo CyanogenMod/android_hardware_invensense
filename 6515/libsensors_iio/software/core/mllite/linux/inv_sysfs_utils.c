@@ -1,3 +1,9 @@
+/*
+ $License:
+    Copyright (C) 2014 InvenSense Corporation, All Rights Reserved.
+ $
+ */
+
 /**
  *  @brief    Provides helpful file IO wrappers for use with sysfs.
  *  @details  Based on Jonathan Cameron's @e iio_utils.h.

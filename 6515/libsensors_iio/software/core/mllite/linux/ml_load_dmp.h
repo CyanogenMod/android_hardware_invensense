@@ -1,6 +1,6 @@
 /*
  $License:
-    Copyright (C) 2012 InvenSense Corporation, All Rights Reserved.
+    Copyright (C) 2014 InvenSense Corporation, All Rights Reserved.
  $
  */
 
