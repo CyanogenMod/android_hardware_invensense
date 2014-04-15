@@ -589,8 +589,11 @@ void MPLSensor::enable_iio_sysfs(void)
     if (tempFp == NULL) {
         LOGE("HAL:could not open timestamp enable");
     } else {
-        if(fprintf(tempFp, "%d", 1) < 0 || fclose(tempFp) < 0) {
+        if(fprintf(tempFp, "%d", 1) < 0) {
             LOGE("HAL:could not enable timestamp");
+        }
+        if(fclose(tempFp) < 0) {
+            LOGE("HAL:could not close timestamp");
         }
     }
 
@@ -600,8 +603,11 @@ void MPLSensor::enable_iio_sysfs(void)
     if (tempFp == NULL) {
         LOGE("HAL:could not open buffer length");
     } else {
-        if (fprintf(tempFp, "%d", IIO_BUFFER_LENGTH) < 0 || fclose(tempFp) < 0) {
+        if (fprintf(tempFp, "%d", IIO_BUFFER_LENGTH) < 0) {
             LOGE("HAL:could not write buffer length");
+        }
+        if (fclose(tempFp) < 0) {
+            LOGE("HAL:could not close buffer length");
         }
     }
 
@@ -611,8 +617,11 @@ void MPLSensor::enable_iio_sysfs(void)
     if (tempFp == NULL) {
         LOGE("HAL:could not open chip enable");
     } else {
-        if (fprintf(tempFp, "%d", 1) < 0 || fclose(tempFp) < 0) {
+        if (fprintf(tempFp, "%d", 1) < 0) {
             LOGE("HAL:could not write chip enable");
+        }
+        if (fclose(tempFp) < 0) {
+            LOGE("HAL:could not close chip enable");
         }
     }
 
@@ -809,10 +818,13 @@ void MPLSensor::loadDMP(void)
             if(fptr == NULL) {
                 LOGE("HAL:could not open dmp_firmware");
             } else {
-                if (inv_load_dmp(fptr) < 0 || fclose(fptr) < 0) {
+                if (inv_load_dmp(fptr) < 0) {
                     LOGE("HAL:load DMP failed");
                 } else {
                     LOGV_IF(PROCESS_VERBOSE, "HAL:DMP loaded");
+                }
+                if (fclose(fptr) < 0) {
+                    LOGE("HAL:could not close dmp firmware");
                 }
             }
         } else {
@@ -837,7 +849,7 @@ void MPLSensor::inv_get_sensors_orientation(void)
         int om[9];
         if (fscanf(fptr, "%d,%d,%d,%d,%d,%d,%d,%d,%d",
                &om[0], &om[1], &om[2], &om[3], &om[4], &om[5],
-               &om[6], &om[7], &om[8]) < 0 || fclose(fptr) < 0) {
+               &om[6], &om[7], &om[8]) < 0) {
             LOGE("HAL:Could not read gyro mounting matrix");
         } else {
             LOGV_IF(EXTRA_VERBOSE,
@@ -855,6 +867,9 @@ void MPLSensor::inv_get_sensors_orientation(void)
             mGyroOrientation[7] = om[7];
             mGyroOrientation[8] = om[8];
         }
+        if (fclose(fptr) < 0) {
+            LOGE("HAL:Could not close gyro mounting matrix");
+        }
     }
 
     // get accel orientation
@@ -865,7 +880,7 @@ void MPLSensor::inv_get_sensors_orientation(void)
         int om[9];
         if (fscanf(fptr, "%d,%d,%d,%d,%d,%d,%d,%d,%d",
             &om[0], &om[1], &om[2], &om[3], &om[4], &om[5],
-            &om[6], &om[7], &om[8]) < 0 || fclose(fptr) < 0) {
+            &om[6], &om[7], &om[8]) < 0) {
             LOGE("HAL:could not read accel mounting matrix");
         } else {
             LOGV_IF(EXTRA_VERBOSE,
@@ -882,6 +897,9 @@ void MPLSensor::inv_get_sensors_orientation(void)
            mAccelOrientation[6] = om[6];
            mAccelOrientation[7] = om[7];
            mAccelOrientation[8] = om[8];
+        }
+        if (fclose(fptr) < 0) {
+            LOGE("HAL:could not close accel mounting matrix");
         }
     }
 }
@@ -5734,24 +5752,6 @@ int MPLSensor::flush(int handle)
 
     LOGV_IF(PROCESS_VERBOSE, "HAL: flush - select sensor %s (handle %d)", sname.string(), handle);
 
-#if 0
-    switch (what) {
-    case Gyro:
-    case RawGyro:
-    case Accelerometer:
-    case MagneticField:
-    case RawMagneticField:
-    case Pressure:
-    case GameRotationVector:
-    case StepDetector:
-        LOGV_IF(PROCESS_VERBOSE, "HAL: flush - select sensor %s (handle %d)", sname.string(), handle);
-        break;
-    default:
-        LOGE("sensor (handle %d) is not supported in batch or flush mode", handle);
-        return -EINVAL;
-    }
-#endif
-
     if (((what != StepDetector) && (!(mEnabled & (1 << what)))) ||
         ((what == StepDetector) && !(mFeatureActiveMask & INV_DMP_PEDOMETER))) {
         LOGE_IF(ENG_VERBOSE, "HAL: flush - sensor %s not enabled", sname.string());
@@ -5769,20 +5769,19 @@ int MPLSensor::flush(int handle)
     status = read_sysfs_int(mpu.flush_batch, &res);
 
     if (status < 0)
-        return status;
+        LOGE("HAL: flush - error invoking flush_batch");
 
     /* driver returns 0 if FIFO is empty */
     /* ensure we return status zero      */
     if (res == 0) {
         LOGI("HAL: flush - no data in FIFO");
-        status = 0;
     }
 
     mFlushSensorEnabledVector.push_back(handle);
     LOGV_IF(ENG_VERBOSE, "HAl:flush - mFlushSensorEnabledVector=%d res=%d", handle, res);
 
     mFlushBatchSet = 0;
-    return status;
+    return 0;
 }
 
 int MPLSensor::selectAndSetQuaternion(int batchMode, int mEnabled, long long featureMask)
@@ -5945,9 +5944,15 @@ int MPLSensor::readDmpPedometerEvents(sensors_event_t* data, int count,
             if (fp == NULL) {
                 LOGE("HAL:cannot open pedometer_steps");
             } else {
-                if (fscanf(fp, "%lld\n", &stepCount) < 0 || fclose(fp) < 0) {
+                if (fscanf(fp, "%lld\n", &stepCount) < 0) {
                     LOGW("HAL:cannot read pedometer_steps");
+                    if (fclose(fp) < 0) {
+                       LOGW("HAL:cannot close pedometer_steps");
+                    }
                     return 0;
+                }
+                if (fclose(fp) < 0) {
+                       LOGW("HAL:cannot close pedometer_steps");
                 }
             }
 
@@ -5963,9 +5968,16 @@ int MPLSensor::readDmpPedometerEvents(sensors_event_t* data, int count,
             if (fp == NULL) {
                 LOGE("HAL:cannot open pedometer_counter");
             } else{
-                if (fscanf(fp, "%lld\n", &stepCountTs) < 0 || fclose(fp) < 0) {
+                if (fscanf(fp, "%lld\n", &stepCountTs) < 0) {
                     LOGE("HAL:cannot read pedometer_counter");
+                    if (fclose(fp) < 0) {
+                        LOGE("HAL:cannot close pedometer_counter");
+                    }
                     return 0;
+                }
+                if (fclose(fp) < 0) {
+                        LOGE("HAL:cannot close pedometer_counter");
+                        return 0;
                 }
             }
             mScEvents.timestamp = stepCountTs;
@@ -6021,8 +6033,11 @@ int MPLSensor::readDmpSignificantMotionEvents(sensors_event_t* data, int count)
         LOGE("HAL:cannot open event_smd");
         return 0;
     } else {
-        if (fscanf(fp, "%d\n", &significantMotion) < 0 || fclose(fp) < 0) {
+        if (fscanf(fp, "%d\n", &significantMotion) < 0) {
             LOGE("HAL:cannot read event_smd");
+        }
+        if (fclose(fp) < 0) {
+            LOGE("HAL:cannot close event_smd");
         }
     }
 
@@ -6041,6 +6056,9 @@ int MPLSensor::readDmpSignificantMotionEvents(sensors_event_t* data, int count)
             /* reset smd state */
             mDmpSignificantMotionEnabled = 0;
             mFeatureActiveMask &= ~INV_DMP_SIGNIFICANT_MOTION;
+
+            /* auto disable this sensor */
+            enableDmpSignificantMotion(0);
         }
     }
 
@@ -6123,10 +6141,13 @@ void MPLSensor::setInitial6QuatValue()
     if(fptr == NULL) {
         LOGE("HAL:could not open six_axis_q_value");
     } else {
-        if (fwrite(quat, 1, length, fptr) != length || fclose(fptr) < 0) {
+        if (fwrite(quat, 1, length, fptr) != length) {
            LOGE("HAL:write six axis q value failed");
         } else {
             mInitial6QuatValueAvailable = 0;
+        }
+        if (fclose(fptr) < 0) {
+            LOGE("HAL:could not close six_axis_q_value");
         }
     }
 
