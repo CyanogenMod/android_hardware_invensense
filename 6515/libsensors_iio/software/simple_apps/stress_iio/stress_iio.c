@@ -62,9 +62,15 @@ static void handle_smd() {
 
 static void pedo_print()
 {
-	printf("steps=%lld, time=%lld\n",
+	struct timespec aa;
+	unsigned long long t;
+
+	clock_gettime(CLOCK_REALTIME, &aa);
+	t = (unsigned long long)aa.tv_sec * 1000000000 + aa.tv_nsec;
+	printf("steps=%lld, time=%lld, system=%lld\n",
 		read_sysfs_poslonglong("pedometer_steps", dev_dir_name),
-		read_sysfs_poslonglong("pedometer_time", dev_dir_name));
+		read_sysfs_poslonglong("pedometer_time", dev_dir_name),
+		t);
 }
 
 struct dmp_struct event_file[] = {
@@ -155,11 +161,11 @@ static void inv_set_rate()
 	ret = write_sysfs_int_and_verify("accel_rate", dev_dir_name, 5);
 	ret = write_sysfs_int_and_verify("gyro_rate", dev_dir_name, 5);
 	if (has_compass)
-		ret = write_sysfs_int_and_verify("compass_rate", dev_dir_name, 50);
+		ret = write_sysfs_int_and_verify("compass_rate", dev_dir_name, 10);
 	if (has_pressure)
-		ret = write_sysfs_int_and_verify("pressure_rate", dev_dir_name, 1);
-	ret = write_sysfs_int_and_verify("ped_q_rate", dev_dir_name, 1);
-	ret = write_sysfs_int_and_verify("six_axes_q_rate", dev_dir_name, 15);
+		ret = write_sysfs_int_and_verify("pressure_rate", dev_dir_name, 30);
+	ret = write_sysfs_int_and_verify("ped_q_rate", dev_dir_name, 5);
+	ret = write_sysfs_int_and_verify("six_axes_q_rate", dev_dir_name, 5);
 	ret = write_sysfs_int_and_verify("three_axes_q_rate", dev_dir_name, 5);
 }
 
@@ -186,7 +192,7 @@ static int setup_offset_and_bias()
 		printf("write accel y offset failed.\n");
 	ret = write_sysfs_int_and_verify("in_anglvel_z_offset", dev_dir_name, 0);
 	if (ret < 0)
-		printf("write accel z offset failed.\n"); 
+		printf("write accel z offset failed.\n");
 
 	ret = write_sysfs_int_and_verify("in_accel_x_dmp_bias", dev_dir_name, 0);
 	if (ret < 0)
@@ -226,17 +232,17 @@ static void setup_dmp(char *dev_path){
 		return;
 	ret = write_sysfs_int("in_anglvel_scale", dev_path, 3);
 	if (ret < 0)
-		return;	
+		return;
 	ret = write_sysfs_int("sampling_frequency", sysfs_path, 200);
 	if (ret < 0)
-		return;	
+		return;
 	ret = write_sysfs_int_and_verify("firmware_loaded", sysfs_path, 0);
 	if (ret < 0)
 		return;
 	sprintf(dmp_path, "%s/dmp_firmware", dev_path);
 	if ((fd = fopen(dmp_path, "wb")) < 0 ) {
 		perror("dmp fail");
-	}	
+	}
 	inv_load_dmp(fd);
 	fclose(fd);
 	printf("firmware_loaded=%d\n", read_sysfs_posint("firmware_loaded", sysfs_path));
@@ -247,16 +253,12 @@ static void setup_dmp(char *dev_path){
 	if (ret < 0)
 		return;
 	/* selelct which event to enable and interrupt on/off here */
-	//enable_glu(sysfs_path, 0);
-	ret = write_sysfs_int_and_verify("tap_on", sysfs_path, 0);
-	if (ret < 0)
-		return;
 	ret = write_sysfs_int_and_verify("pedometer_int_on", sysfs_path, 1);
 	ret = write_sysfs_int_and_verify("pedometer_on", sysfs_path, 1);
 
 	ret = write_sysfs_int_and_verify("dmp_event_int_on", sysfs_path, 1);
-		write_sysfs_int64("pedometer_steps", sysfs_path, 0x3ffffffff);
-		write_sysfs_int64("pedometer_time", sysfs_path, 0xffffffff);
+		write_sysfs_int64("pedometer_steps", sysfs_path, 0);
+		write_sysfs_int64("pedometer_time", sysfs_path, 0);
 	if (ret < 0)
 		return;
 
@@ -316,9 +318,9 @@ static void *get_dmp_event(void *param) {
 				fscanf(fp, "%d\n", &data);
 				event_file[i].action(&event_file[i], data);
 			}
-		}						
+		}
 	}
-	
+
 	return 0;
 }
 
@@ -419,14 +421,14 @@ static int enable_enable(int on){
 	int ret;
 
 	if (0 == on) {
-		pthread_mutex_lock(&data_switch_lock);
+		//pthread_mutex_lock(&data_switch_lock);
 	}
 	ret = write_sysfs_int_and_verify("master_enable", dev_dir_name, on);
 	if (ret < 0)
 		printf("write enable failed\n");
 
 	if (on) {
-		pthread_mutex_unlock(&data_switch_lock);
+		//pthread_mutex_unlock(&data_switch_lock);
 	}
 
 	return 0;
@@ -469,8 +471,8 @@ static void dmp_event_control(on){
 	inv_set_rate();
 
 	//ret = write_sysfs_int_and_verify("batchmode_wake_fifo_full_on", dev_dir_name, 1);
-	ret = write_sysfs_int_and_verify("batchmode_timeout", dev_dir_name, 5000);
-//	ret = write_sysfs_int_and_verify("batchmode_timeout", dev_dir_name, 0);
+	ret = write_sysfs_int_and_verify("batchmode_timeout", dev_dir_name, 10000);
+	ret = write_sysfs_int_and_verify("batchmode_timeout", dev_dir_name, 0);
 	//ret = write_sysfs_int_and_verify("smd_delay_threshold", dev_dir_name, 10);
 	if (ret < 0)
 		return;
@@ -507,8 +509,8 @@ static int run_enable_sequence()
 	if (!g && !a)
 		a = true;
 
-	//g = true;
-	//a = true;
+	g = true;
+	a = true;
 	/*disable the master enable */
 	enable_enable(0);
 	if(g) {
@@ -521,8 +523,8 @@ static int run_enable_sequence()
 			enable_quaternion(1);
 			enable_gyro_output(1);
 		}
-	//	enable_quaternion(0);
-	//	enable_gyro_output(0);
+		enable_quaternion(1);
+		enable_gyro_output(0);
 
 	} else {
 		enable_gyro(0);
@@ -531,7 +533,7 @@ static int run_enable_sequence()
 	}
 	if(a) {
 		enable_accel(1);
-		enable_accel_output(1);
+		enable_accel_output(0);
 	} else {
 		enable_accel(0);
 		enable_accel_output(0);
@@ -542,7 +544,7 @@ static int run_enable_sequence()
 		else
 			enable_compass(0);
 		enable_compass(counter%2);
-		//enable_compass(0);
+		enable_compass(0);
 	}
 	if (has_pressure) {
 		if(rand()%2)
@@ -550,12 +552,12 @@ static int run_enable_sequence()
 		else
 			enable_pressure(0);
 		enable_pressure(counter%3);
-		//enable_pressure(0);
+		enable_pressure(0);
 	}
 	enable_step_detector(1);
 	enable_step_indicator(1);
-	//enable_step_detector(0);
-	//enable_step_indicator(0);
+	enable_step_detector(0);
+	enable_step_indicator(0);
 
 	write_dmp_event(0);
 
@@ -567,7 +569,6 @@ static int run_enable_sequence()
 	first_flag = 1;
 	/*enable the master enable */
 	enable_enable(1);
-	//write_sysfs_string_and_verify("wake_unlock", "/sys/power/", "hack");
 	if (enable_random_delay)
 		random_delay();
 	else {
@@ -600,6 +601,15 @@ static int run_disable_sequence() {
 		sleep(disable_delay);
 	}
 
+	if (has_pressure) {
+		if(rand()%2)
+			enable_pressure(1);
+		else
+			enable_pressure(0);
+		enable_pressure(counter%3);
+		enable_pressure(1);
+	}
+
 	return 0;
 }
 static int run_dmp_off() {
@@ -613,8 +623,7 @@ static int run_dmp_off() {
 
 	g = true;
 	a = true;
-//	a = false;
-//	g = false;
+	a = false;
 	/*disable the master enable */
 	enable_enable(0);
 	if(g) {
@@ -644,7 +653,7 @@ static int run_dmp_off() {
 		else
 			enable_compass(0);
 		enable_compass(counter%2);
-		enable_compass(1);
+		enable_compass(0);
 	}
 	if (has_pressure) {
 		if(rand()%2)
@@ -654,22 +663,24 @@ static int run_dmp_off() {
 		enable_pressure(counter%3);
 		enable_pressure(1);
 	}
+	printf("111111111111111\n");
 
-	write_sysfs_int_and_verify("sampling_frequency", dev_dir_name,100);
+	write_sysfs_int_and_verify("sampling_frequency", dev_dir_name,15);
+	write_sysfs_int_and_verify("dmp_on", dev_dir_name, 0);
 	first_flag = 1;
 	/*enable the master enable */
-	enable_enable(1);	
-	sleep(2);
+	enable_enable(1);
+	//sleep(2);
 
 	return 0;
-}	
+}
 static void *control_switch(void *param)
 {
 	while(1) {
 		run_enable_sequence();
-		run_dmp_off();
+		//run_dmp_off();
 		printf("sleeping\n");
-		sleep(1000);
+		//sleep(1000);
 		run_disable_sequence();
 	}
 	return 0;
@@ -686,17 +697,21 @@ void get_sensor_data(char *d, short *sensor)
 static void *read_data(void *param)
 {
 	char *buffer_access;
-	char data[1048], *dptr, tmp[24];
+	char data[2048], *dptr, tmp[24];
 	short sensor[3];
 	int q[3], i, ind, left_over_size, buf_size;
 	int ret, fp,read_size;
 	unsigned short hdr;
 	bool done_flag;
+	struct timespec ts_1;
+	unsigned long long t0, t1;
+	int g_count, sq_count;
 
 #define PRESSURE_HDR             0x8000
 #define ACCEL_HDR                0x4000
 #define GYRO_HDR                 0x2000
 #define COMPASS_HDR              0x1000
+#define COMPASS_HDR_2            0x1800
 #define LPQUAT_HDR               0x0800
 #define SIXQUAT_HDR              0x0400
 #define PEDQUAT_HDR              0x0200
@@ -720,8 +735,18 @@ static void *read_data(void *param)
 		goto error_open_buffer_access;
 	}
 	ind = 0;
-	
+
+	clock_gettime(CLOCK_REALTIME, &ts_1);
+	t0 = (unsigned long long)ts_1.tv_sec * 1000000000 + ts_1.tv_nsec;
 	while(1) {
+
+		clock_gettime(CLOCK_REALTIME, &ts_1);
+		t1 = (unsigned long long)ts_1.tv_sec * 1000000000 + ts_1.tv_nsec;
+		//printf("diff=%lld, a_count=%d, sq_count=%d\n", (t1-t0), g_count, sq_count);
+		g_count = 0;
+		sq_count = 0;
+		t0 = t1;
+
 		struct pollfd pfd = {
 			.fd = fp,
 			.events = POLLIN,
@@ -731,7 +756,7 @@ static void *read_data(void *param)
 		if (left_over_size > 0)
 			memcpy(data, tmp, left_over_size);
 		dptr = data + left_over_size;
-		read_size = read(fp,  dptr, 1024);
+		read_size = read(fp,  dptr, 2000);
 		printf("readsize=%d, left_over_size=%d\n", read_size, left_over_size);
 		if (read_size <= 0) {
 			printf("Wrong size=%d\n", read_size);
@@ -740,7 +765,7 @@ static void *read_data(void *param)
 		}
 		ind = read_size + left_over_size;
 		dptr = data;
-		printf("ind=%d\n", ind);
+		//printf("ind=%d\n", ind);
 		buf_size = ind - (dptr - data);
 		done_flag = false;
 
@@ -769,6 +794,7 @@ static void *read_data(void *param)
 				if (buf_size >= 16) {
 					get_sensor_data(dptr, sensor);
 					dptr += 8;
+					g_count++;
 					printf("G:%d, %d, %d,  %lld\n", sensor[0], sensor[1], sensor[2],   *(long long *)dptr);
 				} else
 					done_flag = true;
@@ -807,6 +833,7 @@ static void *read_data(void *param)
 					q[1] = *(int *)(dptr);
 					q[2] = *(int *)(dptr + 4);
 					dptr += 8;
+					sq_count++;
 					printf("SIXQ:%d, %d, %d,  %lld\n", q[0], q[1], q[2],   *(long long *)dptr);
 				}  else
 					done_flag = true;
@@ -825,6 +852,8 @@ static void *read_data(void *param)
 					printf("emptry marker !!!!!!!!!!!\n");
 				} else if (hdr == END_MARKER) {
 					printf("end marker !!!!!\n");
+				} else if (hdr == COMPASS_HDR_2) {
+					printf("bad compass data\n");
 				} else {
 					dptr +=8;
 					printf("%lld\n", *(long long *)dptr);
@@ -992,7 +1021,7 @@ int main(int argc, char **argv)
 		goto error_free_buf_dir_name;
 	}
 	/* Setup ring buffer parameters */
-	/* length must be even number because iio_store_to_sw_ring is expecting 
+	/* length must be even number because iio_store_to_sw_ring is expecting
 		half pointer to be equal to the read pointer, which is impossible
 		when buflen is odd number. This is actually a bug in the code */
 	ret = write_sysfs_int("length", buf_dir_name, buf_len*2);
