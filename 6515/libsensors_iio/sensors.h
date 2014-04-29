@@ -62,7 +62,9 @@ enum {
     Accelerometer,
     MagneticField,
     RawMagneticField,
+#ifdef ENABLE_PRESSURE
     Pressure,
+#endif
     Orientation,
     RotationVector,
     GameRotationVector,
@@ -74,6 +76,12 @@ enum {
     GeomagneticRotationVector,
     NumSensors
 };
+
+#ifdef ENABLE_PRESSURE
+#define LAST_HW_SENSOR	Pressure
+#else
+#define LAST_HW_SENSOR	RawMagneticField
+#endif
 
 /* Physical parameters of the sensors supported by Invensense MPL */
 #define SENSORS_GYROSCOPE_HANDLE                   (ID_GY)
