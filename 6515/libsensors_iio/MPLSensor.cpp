@@ -165,8 +165,10 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
 
     enable_iio_sysfs();
 
+#ifdef ENABLE_PRESSURE
     /* instantiate pressure sensor on secondary bus */
     mPressureSensor = new PressureSensor((const char*)mSysfsPath);
+#endif
 
     /* reset driver master enable */
     masterEnable(0);
@@ -442,11 +444,13 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     mPendingEvents[RawMagneticField].magnetic.status =
         SENSOR_STATUS_ACCURACY_HIGH;
 
+#ifdef ENABLE_PRESSURE
     mPendingEvents[Pressure].version = sizeof(sensors_event_t);
     mPendingEvents[Pressure].sensor = ID_PS;
     mPendingEvents[Pressure].type = SENSOR_TYPE_PRESSURE;
     mPendingEvents[Pressure].magnetic.status =
         SENSOR_STATUS_ACCURACY_HIGH;
+#endif
 
     mPendingEvents[Orientation].version = sizeof(sensors_event_t);
     mPendingEvents[Orientation].sensor = ID_O;
@@ -488,8 +492,9 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     mHandlers[RawMagneticField] = &MPLSensor::rawCompassHandler;
     mHandlers[Orientation] = &MPLSensor::orienHandler;
     mHandlers[GeomagneticRotationVector] = &MPLSensor::gmHandler;
+#ifdef ENABLE_PRESSURE
     mHandlers[Pressure] = &MPLSensor::psHandler;
-
+#endif
     /* initialize delays to reasonable values */
     for (int i = 0; i < NumSensors; i++) {
         mDelays[i] = 1000000000LL;
@@ -559,7 +564,9 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     enableLowPowerAccel(0);
     enableAccel(0);
     enableCompass(0,0);
+#ifdef ENABLE_PRESSURE
     enablePressure(0);
+#endif
     enableBatch(0);
 
     if (isLowPowerQuatEnabled()) {
@@ -1907,6 +1914,7 @@ int MPLSensor::enableCompass(int en, int rawSensorRequested)
     return res;
 }
 
+#ifdef ENABLE_PRESSURE
 int MPLSensor::enablePressure(int en)
 {
     VFUNC_LOG;
@@ -1918,6 +1926,7 @@ int MPLSensor::enablePressure(int en)
 
     return res;
 }
+#endif
 
 /* use this function for initialization */
 int MPLSensor::enableBatch(int64_t timeout)
@@ -2064,8 +2073,10 @@ int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed)
     if (isLowPowerQuatEnabled() ||
         changed & ((1 << Gyro) | (1 << RawGyro) | (1 << Accelerometer) |
         (mCompassSensor->isIntegrated() << MagneticField) |
-        (mCompassSensor->isIntegrated() << RawMagneticField) |
-        (mPressureSensor->isIntegrated() << Pressure))) {
+#ifdef ENABLE_PRESSURE
+        (mPressureSensor->isIntegrated() << Pressure) |
+#endif
+        (mCompassSensor->isIntegrated() << RawMagneticField))) {
 
         /* reset master enable */
         res = masterEnable(0);
@@ -2119,6 +2130,7 @@ int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed)
         }
     }
 
+#ifdef ENABLE_PRESSURE
      if (changed & (1 << Pressure)) {
         LOGV_IF(ENG_VERBOSE, "HAL:enableSensors - pressure %s",
                 (sensors & INV_ONE_AXIS_PRESSURE? "enable": "disable"));
@@ -2127,6 +2139,7 @@ int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed)
             return res;
         }
     }
+#endif
 
     if (isLowPowerQuatEnabled()) {
         // Enable LP Quat
@@ -2176,15 +2189,19 @@ int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed)
     /* check for invn hardware sensors change */
     if (changed & ((1 << Gyro) | (1 << RawGyro) | (1 << Accelerometer) |
             (mCompassSensor->isIntegrated() << MagneticField) |
-            (mCompassSensor->isIntegrated() << RawMagneticField) |
-            (mPressureSensor->isIntegrated() << Pressure))) {
+#ifdef ENABLE_PRESSURE
+            (mPressureSensor->isIntegrated() << Pressure) |
+#endif
+            (mCompassSensor->isIntegrated() << RawMagneticField))) {
         LOGV_IF(ENG_VERBOSE,
                 "HAL DEBUG: Gyro, Accel, Compass, Pressure changes");
         if ((checkSmdSupport() == 1) || (checkPedometerSupport() == 1) || (sensors &
             (INV_THREE_AXIS_GYRO
                 | INV_THREE_AXIS_ACCEL
-                | (INV_THREE_AXIS_COMPASS * mCompassSensor->isIntegrated())
-                | (INV_ONE_AXIS_PRESSURE * mPressureSensor->isIntegrated())))) {
+#ifdef ENABLE_PRESSURE
+                | (INV_ONE_AXIS_PRESSURE * mPressureSensor->isIntegrated())
+#endif
+                | (INV_THREE_AXIS_COMPASS * mCompassSensor->isIntegrated())))) {
             LOGV_IF(ENG_VERBOSE, "SMD or Hardware sensors enabled");
             LOGV_IF(ENG_VERBOSE,
                     "mFeatureActiveMask=0x%llx", mFeatureActiveMask);
@@ -2283,7 +2300,7 @@ int MPLSensor::computeBatchSensorMask(int enableSensors, int tempBatchSensor)
         return 0;
 
     // check for possible continuous data mode
-    for(int i = 0; i <= Pressure; i++) {
+    for(int i = 0; i <= LAST_HW_SENSOR; i++) {
         // if any one of the hardware sensor is in continuous data mode
         // turn off batch mode.
         if ((enableSensors & (1 << i)) && !(tempBatchSensor & (1 << i))) {
@@ -2899,10 +2916,12 @@ int MPLSensor::enable(int32_t handle, int en)
         what = GeomagneticRotationVector;
         sname = "GeomagneticRotationVector";
         break;
+#ifdef ENABLE_PRESSURE
     case ID_PS:
         what = Pressure;
         sname = "Pressure";
         break;
+#endif
     default:
         what = handle;
         sname = "Others";
@@ -2958,11 +2977,13 @@ int MPLSensor::enable(int32_t handle, int en)
                     changed |= (1 << what);
                 }
                 break;
+#ifdef ENABLE_PRESSURE
             case Pressure:
                 if ((lastEnabled & (1 << what)) != (mEnabled & (1 << what))) {
                     changed |= (1 << what);
                 }
                 break;
+#endif
             case GameRotationVector:
                 if (!en)
                     storeCalibration();
@@ -3100,10 +3121,12 @@ void MPLSensor::getHandle(int32_t handle, int &what, android::String8 &sname)
         what = LinearAccel;
         sname = "LinearAccel";
         break;
+#ifdef ENABLE_PRESSURE
    case ID_PS:
         what = Pressure;
         sname = "Pressure";
         break;
+#endif
    default: // this takes care of all the gestures
         what = handle;
         sname = "Others";
@@ -3264,7 +3287,9 @@ int MPLSensor::update_delay(void)
         int64_t gyroRate;
         int64_t accelRate;
         int64_t compassRate;
+#ifdef ENABLE_PRESSURE
         int64_t pressureRate;
+#endif
 
         int rateInus;
         int mplGyroRate;
@@ -3284,7 +3309,9 @@ int MPLSensor::update_delay(void)
         gyroRate = wanted;
         accelRate = wanted;
         compassRate = wanted;
+#ifdef ENABLE_PRESSURE
         pressureRate = wanted;
+#endif
         // same delay for 3rd party Accel or Compass
         wanted_3rd_party_sensor = wanted;
 
@@ -3496,12 +3523,14 @@ int MPLSensor::update_delay(void)
                         int(got/1000LL));
             }
 
+#ifdef ENABLE_PRESSURE
             if (PS_ENABLED) {
                 int64_t pressureRate = mDelays[Pressure];
                 LOGV_IF(ENG_VERBOSE, "mFeatureActiveMask=%016llx", mFeatureActiveMask);
                 mPressureSensor->setDelay(ID_PS, pressureRate);
                 LOGE_IF(res < 0, "HAL:PRESSURE update delay error");
             }
+#endif
         }
 
         } //end of non batch mode
@@ -3510,8 +3539,10 @@ int MPLSensor::update_delay(void)
         if (sensors &
             (INV_THREE_AXIS_GYRO
                 | INV_THREE_AXIS_ACCEL
-                | (INV_THREE_AXIS_COMPASS * mCompassSensor->isIntegrated()
-                | (INV_ONE_AXIS_PRESSURE * mPressureSensor->isIntegrated())))) {
+#ifdef ENABLE_PRESSURE
+                | (INV_ONE_AXIS_PRESSURE * mPressureSensor->isIntegrated())
+#endif
+                | (INV_THREE_AXIS_COMPASS * mCompassSensor->isIntegrated()))) {
             LOGV_IF(ENG_VERBOSE, "sensors=%lu", sensors);
             res = masterEnable(1);
             if(res < 0)
@@ -3934,6 +3965,7 @@ LOGV_IF(INPUT_DATA,
                 doneFlag = 1;
             }
         }
+#ifdef ENABLE_PRESSURE
         else if (data_format == DATA_FORMAT_PRESSURE) {
             LOGV_IF(ENG_VERBOSE && INPUT_DATA, "PRESSURE DETECTED:0x%x", data_format);
             if (readCounter >= BYTES_QUAT_DATA) {
@@ -3952,6 +3984,7 @@ LOGV_IF(INPUT_DATA,
                 doneFlag = 1;
             }
         }
+#endif
 
         if(doneFlag == 0) {
             rdata += BYTES_PER_SENSOR;
@@ -4145,6 +4178,7 @@ LOGV_IF(INPUT_DATA,
             latestTimestamp = mQuatSensorTimestamp;
         }
 
+#ifdef ENABLE_PRESSURE
         if ((mask & DATA_FORMAT_PRESSURE) && mPressureSensor->isIntegrated()) {
             int status = 0;
             if (mLocalSensorMask & INV_ONE_AXIS_PRESSURE) {
@@ -4158,6 +4192,7 @@ LOGV_IF(INPUT_DATA,
                     mCachedPressureData, mPressureTimestamp);
             }
         }
+#endif
 
         /* take the latest timestamp */
         if (mask & DATA_FORMAT_STEP) {
@@ -4679,9 +4714,11 @@ int MPLSensor::populateSensorList(struct sensor_t *list, int len)
     mCompassSensor->fillList(&list[MagneticField]);
     mCompassSensor->fillList(&list[RawMagneticField]);
 
+#ifdef ENABLE_PRESSURE
     if (mPressureSensor != NULL) {
         mPressureSensor->fillList(&list[Pressure]);
     }
+#endif
 
     if(1) {
         numsensors = (sizeof(sBaseSensorList) / sizeof(sensor_t));
@@ -5519,7 +5556,9 @@ int MPLSensor::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
     case Gyro:
     case RawGyro:
     case Accelerometer:
+#ifdef ENABLE_PRESSURE
     case Pressure:
+#endif
     case GameRotationVector:
     case StepDetector:
         LOGV_IF(PROCESS_VERBOSE, "HAL: batch - select sensor (handle %d)", handle);
@@ -5571,9 +5610,11 @@ int MPLSensor::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
             if (i <= RawMagneticField) {
                 nBytes += 8;
             }
+#ifdef ENABLE_PRESSURE
             if (i == Pressure) {
                 nBytes += 6;
             }
+#endif
             if ((i == StepDetector) || (i == GameRotationVector)) {
                 nBytes += 16;
             }
@@ -5858,8 +5899,11 @@ int MPLSensor::computeBatchDataOutput()
                                 | (1 << RawGyro)
                                 | (1 << Accelerometer)
                                 | (1 << MagneticField)
-                                | (1 << RawMagneticField)
-                                | (1 << Pressure);
+#ifdef ENABLE_PRESSURE
+                                | (1 << Pressure)
+#endif
+                                | (1 << RawMagneticField);
+
     LOGV_IF(ENG_VERBOSE, "hardwareSensorMask = 0x%0x, mBatchEnabled = 0x%0x",
             hardwareSensorMask, mBatchEnabled);
 
@@ -6201,7 +6245,9 @@ int MPLSensor::setBatchDataRates()
     int64_t gyroRate;
     int64_t accelRate;
     int64_t compassRate;
+#ifdef ENABLE_PRESSURE
     int64_t pressureRate;
+#endif
     int64_t quatRate;
 
     int mplGyroRate;
@@ -6227,7 +6273,9 @@ int MPLSensor::setBatchDataRates()
                     mBatchDelays[MagneticField]);
     }
     accelRate = mBatchDelays[Accelerometer];
+#ifdef ENABLE_PRESSURE
     pressureRate = mBatchDelays[Pressure];
+#endif
 
     if ((mFeatureActiveMask & INV_DMP_PED_QUATERNION) ||
             (mFeatureActiveMask & INV_DMP_6AXIS_QUATERNION)) {
@@ -6273,7 +6321,9 @@ int MPLSensor::setBatchDataRates()
     gyroRate = wanted;
     accelRate = wanted;
     compassRate = wanted;
+#ifdef ENABLE_PRESSURE
     pressureRate = wanted;
+#endif // ENABLE_PRESSURE
 #endif
 
     /* takes care of gyro rate */
@@ -6300,8 +6350,10 @@ int MPLSensor::setBatchDataRates()
     }
     mCompassSensor->setDelay(ID_M, compassRate);
 
+#ifdef ENABLE_PRESSURE
     /* takes care of pressure rate */
     mPressureSensor->setDelay(ID_PS, pressureRate);
+#endif
 
     return res;
 }
@@ -6320,7 +6372,9 @@ int MPLSensor::resetDataRates()
     int64_t gyroRate;
     int64_t accelRate;
     int64_t compassRate;
+#ifdef ENABLE_PRESSURE
     int64_t pressureRate;
+#endif
 
     if (!mEnabled) {
         LOGV_IF(ENG_VERBOSE, "skip resetDataRates");
@@ -6332,10 +6386,12 @@ int MPLSensor::resetDataRates()
     for (int i = 0; i < NumSensors; i++) {
         if (mEnabled & (1 << i)) {
             int64_t ns = mDelays[i];
+#ifdef ENABLE_PRESSURE
             if ((wanted == ns) && (i != Pressure)) {
                 LOGV_IF(ENG_VERBOSE, "skip resetDataRates : same delay mDelays[%d]=%lld", i,mDelays[i]);
                 //return 0;
             }
+#endif
             LOGV_IF(ENG_VERBOSE, "resetDataRates - mDelays[%d]=%lld", i, mDelays[i]);
             wanted = wanted < ns ? wanted : ns;
         }
@@ -6345,7 +6401,9 @@ int MPLSensor::resetDataRates()
     gyroRate = wanted;
     accelRate = wanted;
     compassRate = wanted;
+#ifdef ENABLE_PRESSURE
     pressureRate = wanted;
+#endif
 
     /* set mpl data rate */
    inv_set_gyro_sample_rate((int)gyroRate/1000LL);
@@ -6403,8 +6461,10 @@ int MPLSensor::resetDataRates()
     }
     mCompassSensor->setDelay(ID_M, compassRate);
 
+#ifdef ENABLE_PRESSURE
     /* takes care of pressure rate */
     mPressureSensor->setDelay(ID_PS, pressureRate);
+#endif
 
     /* takes care of lpq case for data rate at 200Hz */
     if (checkLPQuaternion()) {
