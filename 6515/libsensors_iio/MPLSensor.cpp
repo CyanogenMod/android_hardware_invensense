@@ -4545,8 +4545,13 @@ int MPLSensor::getPollTime(void)
 int MPLSensor::getStepCountPollTime(void)
 {
     VFUNC_LOG;
-    /* clamped to 1ms? as spec, still rather large */
-    return 100;
+    if (mDmpStepCountEnabled) {
+        LOGV_IF(0, "Step Count poll time = %lld ms",
+            mStepCountPollTime / 1000000LL);
+        // convert poll time from nS to mS
+        return (mStepCountPollTime / 1000000LL);
+    }
+    return 1000;
 }
 
 bool MPLSensor::hasStepCountPendingEvents(void)
