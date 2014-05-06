@@ -1776,7 +1776,6 @@ int MPLSensor::enableDmpPedometer(int en, int interruptMode)
         }
         else {
             mFeatureActiveMask |= INV_DMP_PEDOMETER_STEP;
-            mStepCountPollTime = 100000000LL;
         }
 
         clock_gettime(CLOCK_MONOTONIC, &mt_pre);
@@ -5585,6 +5584,12 @@ int MPLSensor::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
     if(dryRun == true) {
         LOGI("HAL: batch Dry Run is complete");
         return 0;
+    }
+
+    if (what == StepCounter) {
+        mStepCountPollTime = period_ns;
+        LOGI("HAL: set step count poll time = %lld nS (%.2f Hz)",
+            mStepCountPollTime, 1000000000.f / mStepCountPollTime);
     }
 
     int tempBatch = 0;
