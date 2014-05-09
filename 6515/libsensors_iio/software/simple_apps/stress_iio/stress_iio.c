@@ -253,6 +253,10 @@ static void setup_dmp(char *dev_path){
 	if (ret < 0)
 		return;
 	/* selelct which event to enable and interrupt on/off here */
+	//enable_glu(sysfs_path, 0);
+//	ret = write_sysfs_int_and_verify("tap_on", sysfs_path, 0);
+//	if (ret < 0)
+//		return;
 	ret = write_sysfs_int_and_verify("pedometer_int_on", sysfs_path, 1);
 	ret = write_sysfs_int_and_verify("pedometer_on", sysfs_path, 1);
 
@@ -510,7 +514,9 @@ static int run_enable_sequence()
 		a = true;
 
 	g = true;
+//	g = false;
 	a = true;
+//	a = false;
 	/*disable the master enable */
 	enable_enable(0);
 	if(g) {
@@ -569,6 +575,10 @@ static int run_enable_sequence()
 	first_flag = 1;
 	/*enable the master enable */
 	enable_enable(1);
+	//enable_enable(0);
+	//verify_img();
+	//while(1);
+	//write_sysfs_string_and_verify("wake_unlock", "/sys/power/", "hack");
 	if (enable_random_delay)
 		random_delay();
 	else {
@@ -624,6 +634,7 @@ static int run_dmp_off() {
 	g = true;
 	a = true;
 	a = false;
+//	g = false;
 	/*disable the master enable */
 	enable_enable(0);
 	if(g) {

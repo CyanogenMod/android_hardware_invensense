@@ -134,6 +134,7 @@ class PressureSensor;
 #define DATA_FORMAT_6_AXIS         0x0400
 #define DATA_FORMAT_QUAT           0x0800
 #define DATA_FORMAT_COMPASS        0x1000
+#define DATA_FORMAT_COMPASS_OF     0x1800
 #define DATA_FORMAT_GYRO           0x2000
 #define DATA_FORMAT_ACCEL          0x4000
 #define DATA_FORMAT_PRESSURE       0x8000
