@@ -495,6 +495,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
 #ifdef ENABLE_PRESSURE
     mHandlers[Pressure] = &MPLSensor::psHandler;
 #endif
+
     /* initialize delays to reasonable values */
     for (int i = 0; i < NumSensors; i++) {
         mDelays[i] = 1000000000LL;
@@ -976,13 +977,16 @@ MPLSensor::~MPLSensor()
 #define A_ENABLED   ((1 << ID_A)  & enabled_sensors)
 #define M_ENABLED   ((1 << ID_M) & enabled_sensors)
 #define RM_ENABLED  ((1 << ID_RM) & enabled_sensors)
-#define PS_ENABLED  ((1 << ID_PS) & enabled_sensors)
 #define O_ENABLED   ((1 << ID_O)  & enabled_sensors)
 #define LA_ENABLED  ((1 << ID_LA) & enabled_sensors)
 #define GR_ENABLED  ((1 << ID_GR) & enabled_sensors)
 #define RV_ENABLED  ((1 << ID_RV) & enabled_sensors)
 #define GRV_ENABLED ((1 << ID_GRV) & enabled_sensors)
 #define GMRV_ENABLED ((1 << ID_GMRV) & enabled_sensors)
+
+#ifdef ENABLE_PRESSURE
+#define PS_ENABLED  ((1 << ID_PS) & enabled_sensors)
+#endif
 
 /* this applies to BMA250 Input Subsystem Driver only */
 int MPLSensor::setAccelInitialState()
@@ -1954,6 +1958,7 @@ void MPLSensor::computeLocalSensorMask(int enabled_sensors)
     VFUNC_LOG;
 
     do {
+#ifdef ENABLE_PRESSURE
         /* Invensense Pressure on secondary bus */
         if (PS_ENABLED) {
             LOGV_IF(ENG_VERBOSE, "PS ENABLED");
@@ -1962,6 +1967,10 @@ void MPLSensor::computeLocalSensorMask(int enabled_sensors)
             LOGV_IF(ENG_VERBOSE, "PS DISABLED");
             mLocalSensorMask &= ~INV_ONE_AXIS_PRESSURE;
         }
+#else
+        LOGV_IF(ENG_VERBOSE, "PS DISABLED");
+        mLocalSensorMask &= ~INV_ONE_AXIS_PRESSURE;
+#endif
 
         if (LA_ENABLED || GR_ENABLED || RV_ENABLED || O_ENABLED
                        || (GRV_ENABLED && GMRV_ENABLED)) {
@@ -2019,14 +2028,20 @@ void MPLSensor::computeLocalSensorMask(int enabled_sensors)
             break;
         }
 
+#ifdef ENABLE_PRESSURE
         if(!A_ENABLED && !M_ENABLED && !RM_ENABLED &&
                !GRV_ENABLED && !GMRV_ENABLED && !GY_ENABLED && !RGY_ENABLED &&
                !PS_ENABLED) {
+#else
+        if(!A_ENABLED && !M_ENABLED && !RM_ENABLED &&
+               !GRV_ENABLED && !GMRV_ENABLED && !GY_ENABLED && !RGY_ENABLED) {
+#endif
             /* Invensense compass cal */
             LOGV_IF(ENG_VERBOSE, "ALL DISABLED");
             mLocalSensorMask = 0;
             break;
         }
+
 
         if (GY_ENABLED || RGY_ENABLED) {
             LOGV_IF(ENG_VERBOSE, "G ENABLED");
@@ -3521,7 +3536,6 @@ int MPLSensor::update_delay(void)
                 LOGV_IF(ENG_VERBOSE, "HAL:MPL compass sample rate: (mpl)=%d us",
                         int(got/1000LL));
             }
-
 #ifdef ENABLE_PRESSURE
             if (PS_ENABLED) {
                 int64_t pressureRate = mDelays[Pressure];
@@ -3964,6 +3978,11 @@ LOGV_IF(INPUT_DATA,
                 doneFlag = 1;
             }
         }
+        else if (data_format == DATA_FORMAT_COMPASS_OF) {
+            LOGV_IF(ENG_VERBOSE && INPUT_DATA, "COMPASS OF DETECTED:0x%x", data_format);            
+            mask |= DATA_FORMAT_COMPASS_OF;
+            readCounter -= BYTES_PER_SENSOR;                        
+        }
 #ifdef ENABLE_PRESSURE
         else if (data_format == DATA_FORMAT_PRESSURE) {
             LOGV_IF(ENG_VERBOSE && INPUT_DATA, "PRESSURE DETECTED:0x%x", data_format);
@@ -4098,7 +4117,20 @@ LOGV_IF(INPUT_DATA,
                 }
             latestTimestamp = mAccelSensorTimestamp;
         }
-
+        
+        if (mask == DATA_FORMAT_COMPASS_OF) {
+            /* compass overflow detected */
+            /* reset compass algorithm */
+            int status = 0;
+            inv_build_compass(mCachedCompassData, status,
+                              mCompassTimestamp);
+            LOGV_IF(INPUT_DATA,
+                    "HAL:input inv_build_compass_of: %+8ld %+8ld %+8ld - %lld",
+                    mCachedCompassData[0], mCachedCompassData[1],
+                    mCachedCompassData[2], mCompassTimestamp);
+            resetCompass();
+        }
+        
         if ((mask & DATA_FORMAT_COMPASS) && mCompassSensor->isIntegrated()) {
             int status = 0;
             if (mCompassSensor->providesCalibration()) {
@@ -4227,7 +4259,8 @@ int MPLSensor::checkValidHeader(unsigned short data_format)
         (data_format == DATA_FORMAT_ACCEL) ||
         (data_format == DATA_FORMAT_PRESSURE) ||
         (data_format == DATA_FORMAT_EMPTY_MARKER) ||
-        (data_format == DATA_FORMAT_MARKER))
+        (data_format == DATA_FORMAT_MARKER) ||
+        (data_format == DATA_FORMAT_COMPASS_OF))
             return 1;
      else {
         LOGV_IF(ENG_VERBOSE, "bad data_format = %x", data_format);

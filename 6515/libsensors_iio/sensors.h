@@ -43,7 +43,9 @@ enum {
     ID_A,
     ID_M,
     ID_RM,
+#ifdef ENABLE_PRESSURE
     ID_PS,
+#endif
     ID_O,
     ID_RV,
     ID_GRV,
@@ -104,7 +106,7 @@ enum {
 /*****************************************************************************/
 
 /*
-   Android KitKat 
+   Android KitKat
    Populate sensor_t structure according to hardware sensors.h
    {    name, vendor, version, handle, type, maxRange, resolution, power, minDelay,
     fifoReservedEventCount, fifoMaxEventCount, reserved[]    }
