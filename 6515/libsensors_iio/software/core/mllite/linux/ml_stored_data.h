@@ -25,7 +25,7 @@ extern "C" {
 /*
     Defines
 */
-#define MLCAL_FILE "/data/inv_cal_data.bin"
+#define MLCAL_FILE "/persist/inv_cal_data.bin"
 
 /*
     APIs
