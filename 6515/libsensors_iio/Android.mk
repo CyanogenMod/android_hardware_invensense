@@ -28,7 +28,7 @@ LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
 
 LOCAL_CFLAGS += -DANDROID_KITKAT
 
-ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
+ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug user))
 ifneq ($(COMPILE_INVENSENSE_COMPASS_CAL),0)
 LOCAL_CFLAGS += -DINVENSENSE_COMPASS_CAL
 endif
@@ -45,7 +45,7 @@ LOCAL_SRC_FILES += MPLSupport.cpp
 LOCAL_SRC_FILES += InputEventReader.cpp
 LOCAL_SRC_FILES += PressureSensor.IIO.secondary.cpp
 
-ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
+ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug user))
 ifeq ($(COMPILE_INVENSENSE_COMPASS_CAL),0)
 LOCAL_SRC_FILES += AkmSensor.cpp
 LOCAL_SRC_FILES += CompassSensor.AKM.cpp
@@ -57,7 +57,7 @@ LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
 endif
 else # release builds, default
 LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
-endif #userdebug
+endif # eng, userdebug & user builds
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite/linux
@@ -87,7 +87,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 # Build a temporary HAL that links the InvenSense .so
 include $(CLEAR_VARS)
-ifeq ($(filter eng, userdebug, $(TARGET_BUILD_VARIANT)),)
+ifeq ($(filter eng, userdebug, user, $(TARGET_BUILD_VARIANT)),)
 ifneq ($(filter manta full_grouper tilapia, $(TARGET_PRODUCT)),)
 LOCAL_MODULE := sensors.full_grouper
 LOCAL_MODULE_OWNER := invensense
@@ -101,9 +101,9 @@ LOCAL_MODULE := sensors.invensense
 LOCAL_MODULE_OWNER := invensense
 endif
 endif
-else    # eng & userdebug builds
+else    # eng, user, & userdebug builds
 LOCAL_MODULE := sensors.invensense
-endif   # eng & userdebug builds
+endif   # eng, user & userdebug builds
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 
 LOCAL_SHARED_LIBRARIES += libmplmpu
@@ -119,7 +119,7 @@ LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
 
 LOCAL_CFLAGS += -DANDROID_KITKAT
 
-ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
+ifneq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug user))
 ifneq ($(COMPILE_INVENSENSE_COMPASS_CAL),0)
 LOCAL_CFLAGS += -DINVENSENSE_COMPASS_CAL
 endif
@@ -134,18 +134,18 @@ LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
 endif
 else # release builds, default
 LOCAL_SRC_FILES += CompassSensor.IIO.9150.cpp
-endif # userdebug
+endif # eng, userdebug & user
 
-ifeq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug))
+ifeq (,$(filter $(TARGET_BUILD_VARIANT),eng userdebug user))
 ifneq ($(filter manta grouper tilapia, $(TARGET_DEVICE)),)
 # it's already defined in some other Makefile for production builds
 #LOCAL_SRC_FILES := sensors_mpl.cpp
 else
 LOCAL_SRC_FILES := sensors_mpl.cpp
 endif
-else    # eng & userdebug builds
+else    # eng, userdebug & user builds
 LOCAL_SRC_FILES := sensors_mpl.cpp
-endif   # eng & userdebug builds
+endif   # eng, userdebug & user builds
 
 LOCAL_SHARED_LIBRARIES := libinvensense_hal
 LOCAL_SHARED_LIBRARIES += libcutils
