@@ -124,7 +124,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
                          mPressureUpdate(0),
                          mQuatSensorTimestamp(0),
                          mStepSensorTimestamp(0),
-                         mLastStepCount(0),
+                         mLastStepCount(-1),
                          mLeftOverBufferSize(0),
                          mInitial6QuatValueAvailable(0),
                          mFlushBatchSet(0),
