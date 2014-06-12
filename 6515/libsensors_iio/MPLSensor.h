@@ -376,6 +376,7 @@ protected:
     InputEventCircularReader mAccelInputReader;
     InputEventCircularReader mGyroInputReader;
 
+    int mCompassOverFlow;
     bool mFirstRead;
     short mTempScale;
     short mTempOffset;

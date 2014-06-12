@@ -2595,7 +2595,7 @@ int MPLSensor::compassHandler(sensors_event_t* s)
             s->magnetic.v[0], s->magnetic.v[1], s->magnetic.v[2],
             s->timestamp, update);
     mCompassAccuracy = s->magnetic.status;
-    return update;
+    return update | mCompassOverFlow;
 }
 
 int MPLSensor::rawCompassHandler(sensors_event_t* s)
@@ -2620,7 +2620,7 @@ int MPLSensor::rawCompassHandler(sensors_event_t* s)
     LOGV_IF(HANDLER_DATA, "HAL:compass raw data: %+f %+f %+f %d -- %lld - %d",
         s->uncalibrated_magnetic.uncalib[0], s->uncalibrated_magnetic.uncalib[1],
                     s->uncalibrated_magnetic.uncalib[2], s->magnetic.status, s->timestamp, update);
-    return update;
+    return update | mCompassOverFlow;
 }
 
 /*
@@ -3689,6 +3689,7 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
             }
         }
     }
+    mCompassOverFlow = 0;
 
     return numEventReceived;
 }
@@ -3981,6 +3982,7 @@ LOGV_IF(INPUT_DATA,
         else if (data_format == DATA_FORMAT_COMPASS_OF) {
             LOGV_IF(ENG_VERBOSE && INPUT_DATA, "COMPASS OF DETECTED:0x%x", data_format);            
             mask |= DATA_FORMAT_COMPASS_OF;
+            mCompassOverFlow = 1;
             readCounter -= BYTES_PER_SENSOR;                        
         }
 #ifdef ENABLE_PRESSURE
