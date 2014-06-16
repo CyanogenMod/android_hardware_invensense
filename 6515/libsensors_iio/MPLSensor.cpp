@@ -5838,12 +5838,6 @@ int MPLSensor::flush(int handle)
 
     LOGV_IF(PROCESS_VERBOSE, "HAL: flush - select sensor %s (handle %d)", sname.string(), handle);
 
-    if (((what != StepDetector) && (!(mEnabled & (1 << what)))) ||
-        ((what == StepDetector) && !(mFeatureActiveMask & INV_DMP_PEDOMETER))) {
-        LOGE_IF(ENG_VERBOSE, "HAL: flush - sensor %s not enabled", sname.string());
-         return -EINVAL;
-    }
-
     if(!(mBatchEnabled & (1 << what))) {
          LOGV_IF(PROCESS_VERBOSE, "HAL:flush - batch mode not enabled for sensor %s (handle %d)", sname.string(), handle);
     }
