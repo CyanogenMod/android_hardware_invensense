@@ -25,6 +25,8 @@
 #include <pthread.h>
 #include <stdlib.h>
 
+#include <sys/queue.h>
+
 #include <linux/input.h>
 
 #include <utils/Atomic.h>
@@ -49,6 +51,15 @@
 #else
 #define LOCAL_SENSORS (NumSensors)
 #endif
+
+struct handle_entry {
+    SIMPLEQ_ENTRY(handle_entry) entries;
+    int handle;
+};
+
+static SIMPLEQ_HEAD(simplehead, handle_entry) pending_flush_items_head;
+struct simplehead *headp;
+static pthread_mutex_t flush_handles_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static struct sensor_t sSensorList[LOCAL_SENSORS];
 static int sensors = (sizeof(sSensorList) / sizeof(sensor_t));
@@ -127,6 +138,9 @@ sensors_poll_context_t::sensors_poll_context_t() {
     * MPLSensor *mplSensor = new MPLSensor(mCompassSensor, AccelLoadConfig);
     */
 
+    // Initialize pending flush queue
+    SIMPLEQ_INIT(&pending_flush_items_head);
+
     // populate the sensor list
     sensors =
             mplSensor->populateSensorList(sSensorList, sizeof(sSensorList));
@@ -182,6 +196,24 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
 
     int nbEvents = 0;
     int nb, polltime = -1;
+
+    struct handle_entry *handle_element;
+    pthread_mutex_lock(&flush_handles_mutex);
+    if (!SIMPLEQ_EMPTY(&pending_flush_items_head)) {
+        sensors_event_t flushCompleteEvent;
+        flushCompleteEvent.type = SENSOR_TYPE_META_DATA;
+        flushCompleteEvent.sensor = 0;
+        handle_element = SIMPLEQ_FIRST(&pending_flush_items_head);
+        flushCompleteEvent.meta_data.sensor = handle_element->handle;
+        SIMPLEQ_REMOVE_HEAD(&pending_flush_items_head, entries);
+        free(handle_element);
+        memcpy(data, (void *) &flushCompleteEvent, sizeof(flushCompleteEvent));
+        LOGI_IF(1, "pollEvents() Returning fake flush event completion for handle %d",
+                flushCompleteEvent.meta_data.sensor);
+        pthread_mutex_unlock(&flush_handles_mutex);
+        return 1;
+    }
+    pthread_mutex_unlock(&flush_handles_mutex);
 
     polltime = ((MPLSensor*) mSensor)->getStepCountPollTime();
 
@@ -293,6 +325,20 @@ int sensors_poll_context_t::batch(int handle, int flags, int64_t period_ns,
 }
 
 #if defined ANDROID_KITKAT
+void inv_pending_flush(int handle) {
+    struct handle_entry *the_entry;
+    pthread_mutex_lock(&flush_handles_mutex);
+    the_entry = (struct handle_entry*) malloc(sizeof(struct handle_entry));
+    if (the_entry != NULL) {
+        LOGI_IF(0, "Inserting %d into pending list", handle);
+        the_entry->handle = handle;
+        SIMPLEQ_INSERT_TAIL(&pending_flush_items_head, the_entry, entries);
+    } else {
+        LOGE("ERROR malloc'ing space for pending handler flush entry");
+    }
+    pthread_mutex_unlock(&flush_handles_mutex);
+}
+
 int sensors_poll_context_t::flush(int handle)
 {
     FUNC_LOG;
@@ -353,7 +399,13 @@ static int poll__flush(struct sensors_poll_device_1 *dev,
                       int handle)
 {
     sensors_poll_context_t *ctx = (sensors_poll_context_t *)dev;
-    return ctx->flush(handle);
+    int status = ctx->flush(handle);
+    if (handle == SENSORS_STEP_COUNTER_HANDLE) {
+        LOGI_IF(0, "creating flush completion event for handle %d", handle);
+        inv_pending_flush(handle);
+        return 0;
+    }
+    return status;
 }
 #endif
 /******************************************************************************/
