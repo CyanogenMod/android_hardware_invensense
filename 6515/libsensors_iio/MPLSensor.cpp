@@ -5719,7 +5719,6 @@ int MPLSensor::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
             enablePedQuaternion(1);
         }
     }
-
     /* case for Ped Quaternion */
     if ((batchMode == 1) && (featureMask & INV_DMP_PED_QUATERNION) &&
             (mEnabled & (1 << GameRotationVector)) &&
@@ -5841,7 +5840,7 @@ int MPLSensor::flush(int handle)
     if (((what != StepDetector) && (!(mEnabled & (1 << what)))) ||
         ((what == StepDetector) && !(mFeatureActiveMask & INV_DMP_PEDOMETER))) {
         LOGE_IF(ENG_VERBOSE, "HAL: flush - sensor %s not enabled", sname.string());
-         return -EINVAL;
+        return -EINVAL;
     }
 
     if(!(mBatchEnabled & (1 << what))) {
@@ -5867,7 +5866,7 @@ int MPLSensor::flush(int handle)
     LOGV_IF(ENG_VERBOSE, "HAl:flush - mFlushSensorEnabledVector=%d res=%d", handle, res);
 
     mFlushBatchSet = 0;
-    return 0;
+    return status;
 }
 
 int MPLSensor::selectAndSetQuaternion(int batchMode, int mEnabled, long long featureMask)
