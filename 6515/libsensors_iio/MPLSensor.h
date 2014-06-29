@@ -357,6 +357,7 @@ protected:
     uint32_t mOldBatchEnabledMask;
     int64_t mBatchTimeoutInMs;
     sensors_event_t mPendingEvents[NumSensors];
+    sensors_event_t mPendingFlushEvents[NumSensors];
     sensors_event_t mSmEvents;
     sensors_event_t mSdEvents;
     sensors_event_t mScEvents;
