@@ -136,7 +136,7 @@ int CompassSensor::getFd() const
  *                  en=0, disable
  *  @return       if the operation is successful.
  */
-int CompassSensor::enable(int32_t handle, int en) 
+int CompassSensor::enable(int32_t /*handle*/, int en) 
 {
     VFUNC_LOG;
 
@@ -155,7 +155,7 @@ int CompassSensor::enable(int32_t handle, int en)
     return res;
 }
 
-int CompassSensor::setDelay(int32_t handle, int64_t ns) 
+int CompassSensor::setDelay(int32_t /*handle*/, int64_t ns) 
 {
     VFUNC_LOG;
     int tempFd;
@@ -179,7 +179,7 @@ int CompassSensor::setDelay(int32_t handle, int64_t ns)
     @brief      This function will return the state of the sensor.
     @return     1=enabled; 0=disabled
 **/
-int CompassSensor::getEnable(int32_t handle)
+int CompassSensor::getEnable(int32_t /*handle*/)
 {
     VFUNC_LOG;
     return mEnable;
@@ -271,7 +271,7 @@ int CompassSensor::readSample(long *data, int64_t *timestamp)
  *  @brief  This function will return the current delay for this sensor.
  *  @return delay in nanoseconds. 
  */
-int64_t CompassSensor::getDelay(int32_t handle)
+int64_t CompassSensor::getDelay(int32_t /*handle*/)
 {
     VFUNC_LOG;
     return mDelay;
