@@ -7,7 +7,9 @@ ifneq ($(filter guppy dory, $(TARGET_DEVICE)),)
 # dory and guppy expect 6515 sensors.
 include $(call all-named-subdir-makefiles,6515)
 else
+ifeq ($(filter anthias, $(TARGET_DEVICE)),)
 # manta expects 60xx sensors.
 include $(call all-named-subdir-makefiles,60xx)
+endif
 endif
 endif
