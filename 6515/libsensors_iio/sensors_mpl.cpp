@@ -422,7 +422,7 @@ static int open_sensors(const struct hw_module_t* module, const char* id,
 
     dev->device.common.tag = HARDWARE_DEVICE_TAG;
 #if defined ANDROID_KITKAT
-    dev->device.common.version  = SENSORS_DEVICE_API_VERSION_1_1;
+    dev->device.common.version  = SENSORS_DEVICE_API_VERSION_1_3;
     dev->device.flush           = poll__flush;
 #else
     dev->device.common.version  = SENSORS_DEVICE_API_VERSION_1_0;
