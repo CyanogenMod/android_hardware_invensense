@@ -877,21 +877,21 @@ int MPLSensor::enableQuaternionData(int en)
     return res;
 }
 
-int MPLSensor::enableTap(int en)
+int MPLSensor::enableTap(int /*en*/)
 {
     VFUNC_LOG;
 
     return 0;
 }
 
-int MPLSensor::enableFlick(int en)
+int MPLSensor::enableFlick(int /*en*/)
 {
     VFUNC_LOG;
 
     return 0;
 }
 
-int MPLSensor::enablePedometer(int en)
+int MPLSensor::enablePedometer(int /*en*/)
 {
     VFUNC_LOG;
 
@@ -1010,7 +1010,7 @@ int MPLSensor::enableOneSensor(int en, const char *name, int (MPLSensor::*enable
     return (this->*enabler)(en);
 }
 
-int MPLSensor::enableSensors(unsigned long sensors, int en, uint32_t changed) {
+int MPLSensor::enableSensors(unsigned long sensors, int /*en*/, uint32_t changed) {
     VFUNC_LOG;
 
     inv_error_t res = -1;
@@ -1758,7 +1758,7 @@ int MPLSensor::update_delay() {
 
 /* For Third Party Accel Input Subsystem Drivers only */
 /* TODO: FIX! data is not used and count not decremented, results is hardcoded to 0 */
-int MPLSensor::readAccelEvents(sensors_event_t* data, int count)
+int MPLSensor::readAccelEvents(sensors_event_t* /*data*/, int count)
 {
     VHANDLER_LOG;
 
@@ -1859,7 +1859,7 @@ int MPLSensor::executeOnData(sensors_event_t* data, int count)
 /* TODO: This should probably be called "void cacheEvents(void)"
  * And executeOnData() should be int readEvents(data,count)
  */
-int MPLSensor::readEvents(sensors_event_t *data, int count) {
+int MPLSensor::readEvents(sensors_event_t* /*data*/, int /*count*/) {
 
 
     int lp_quaternion_on = 0, nbyte;
@@ -1910,7 +1910,7 @@ int MPLSensor::readEvents(sensors_event_t *data, int count) {
 #endif
 
     if (rsize < (nbyte - 8)) {
-        LOGE("HAL:ERR Full data packet was not read. rsize=%ld nbyte=%d sensors=%d errno=%d(%s)",
+        LOGE("HAL:ERR Full data packet was not read. rsize=%zd nbyte=%d sensors=%d errno=%d(%s)",
              rsize, nbyte, sensors, errno, strerror(errno));
         return -1;
     }
@@ -2032,7 +2032,7 @@ int MPLSensor::readEvents(sensors_event_t *data, int count) {
 }
 
 /* use for both MPUxxxx and third party compass */
-int MPLSensor::readCompassEvents(sensors_event_t *data, int count)
+int MPLSensor::readCompassEvents(sensors_event_t* /*data*/, int count)
 {
     VHANDLER_LOG;
 
