@@ -156,7 +156,7 @@
 #define ACCEL_MPU6050_RANGE             (2.f * GRAVITY_EARTH)
 #define ACCEL_MPU6050_RESOLUTION        (0.004f * GRAVITY_EARTH)
 #define ACCEL_MPU6050_POWER             (0.f)
-#define ACCEL_MPU6050_MINDELAY          (1000)
+#define ACCEL_MPU6050_MINDELAY          (5000)
 /******************************************/
 //GYRO MPU3050
 #define RAD_P_DEG                       (3.14159f / 180.f)
@@ -168,7 +168,7 @@
 #define GYRO_MPU6050_RANGE              (2000.f * RAD_P_DEG)
 #define GYRO_MPU6050_RESOLUTION         (2000.f / 32768.f * RAD_P_DEG)
 #define GYRO_MPU6050_POWER              (5.5f)
-#define GYRO_MPU6050_MINDELAY           (1000)
+#define GYRO_MPU6050_MINDELAY           (5000)
 //GYRO MPU9150
 #define GYRO_MPU9150_RANGE              (2000.f * RAD_P_DEG)
 #define GYRO_MPU9150_RESOLUTION         (2000.f / 32768.f * RAD_P_DEG)

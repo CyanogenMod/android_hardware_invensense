@@ -1500,16 +1500,11 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
     LOGV_IF(PROCESS_VERBOSE, "setDelay : %llu ns, (%.2f Hz)", ns, 1000000000.f / ns);
 
     // limit all rates to reasonable ones */
-/*
-    if (ns < 10000000LL) {
-        ns = 10000000LL;
-    }
-*/
     if (ns < 5000000LL) {
         ns = 5000000LL;
     }
 
-    /* store request rate to mDelays arrary for each sensor */
+    /* store request rate to mDelays array for each sensor */
     mDelays[what] = ns;
 
     switch (what) {
@@ -2152,7 +2147,7 @@ int MPLSensor::enableDmpOrientation(int en)
         //Enable DMP orientation
         if (write_sysfs_int(mpu.display_orientation_on, en) < 0) {
             LOGE("HAL:ERR can't enable Android orientation");
-            res = -1;	// indicate an err
+            res = -1; // indicate an err
         }
 
         // open DMP Orient Fd
