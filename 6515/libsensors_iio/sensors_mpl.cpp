@@ -299,14 +299,6 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
                 data += nb;
             }
         }
-
-        if (mPollFds[numSensorDrivers].revents & POLLIN) {
-            char msg;
-            int result = read(mPollFds[numSensorDrivers].fd, &msg, 1);
-            LOGE_IF(result < 0, 
-                    "error reading from wake pipe (%s)", strerror(errno));
-            mPollFds[numSensorDrivers].revents = 0;
-        }
     }
     return nbEvents;
 }
