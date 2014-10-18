@@ -16,6 +16,7 @@
 
 #define FUNC_LOG LOGV("%s", __PRETTY_FUNCTION__)
 
+#include <hardware_legacy/power.h>
 #include <hardware/sensors.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -60,6 +61,9 @@ struct handle_entry {
 static SIMPLEQ_HEAD(simplehead, handle_entry) pending_flush_items_head;
 struct simplehead *headp;
 static pthread_mutex_t flush_handles_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static const char *smdWakelockStr = "significant motion";
+static pthread_mutex_t mSMDWakelockMutex = PTHREAD_MUTEX_INITIALIZER;
 
 static struct sensor_t sSensorList[LOCAL_SENSORS];
 static int sensors = (sizeof(sSensorList) / sizeof(sensor_t));
@@ -121,6 +125,10 @@ private:
     struct pollfd mPollFds[numFds];
     SensorBase *mSensor;
     CompassSensor *mCompassSensor;
+
+    /* Significant Motion wakelock support */
+    unsigned long mSMDEventsPending;
+
 };
 
 /******************************************************************************/
@@ -131,6 +139,9 @@ sensors_poll_context_t::sensors_poll_context_t() {
     /* TODO: Handle external pressure sensor */
     mCompassSensor = new CompassSensor();
     MPLSensor *mplSensor = new MPLSensor(mCompassSensor);
+
+    /* No significant motion events pending yet */
+    mSMDEventsPending = 0;
 
    /* For Vendor-defined Accel Calibration File Load
     * Use the Following Constructor and Pass Your Load Cal File Function
@@ -197,6 +208,16 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
     int nbEvents = 0;
     int nb, polltime = -1;
 
+
+    pthread_mutex_lock(&mSMDWakelockMutex);
+    if (mSMDEventsPending) {
+        mSMDEventsPending--;
+        /* If there are no more events pending, release our wakelock */
+        if (!mSMDEventsPending)
+            release_wake_lock(smdWakelockStr);
+    }
+    pthread_mutex_unlock(&mSMDWakelockMutex);
+
     struct handle_entry *handle_element;
     pthread_mutex_lock(&flush_handles_mutex);
     if (!SIMPLEQ_EMPTY(&pending_flush_items_head)) {
@@ -243,9 +264,21 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
                     nb = ((MPLSensor*) mSensor)->
                                     readDmpSignificantMotionEvents(data, count);
                     mPollFds[i].revents = 0;
-                    count -= nb;
-                    nbEvents += nb;
-                    data += nb; 
+                    if (nb) {
+                        pthread_mutex_lock(&mSMDWakelockMutex);
+                        /* if mSMDEventsPending != 0, the wakelock is already held */
+                        if (!mSMDEventsPending) {
+                            /* Hold wakelock until Sensor Services reads event */
+                            acquire_wake_lock(PARTIAL_WAKE_LOCK, smdWakelockStr);
+                            LOGI_IF(1, "HAL: grabbed %s wakelock", smdWakelockStr);
+                        }
+                        mSMDEventsPending++;
+                        pthread_mutex_unlock(&mSMDWakelockMutex);
+
+                        count -= nb;
+                        nbEvents += nb;
+                        data += nb;
+                    }
                 } else if (i == dmpPed) {
                     nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(
                             data, count, ID_P, 0);
