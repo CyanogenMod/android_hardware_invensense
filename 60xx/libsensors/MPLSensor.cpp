@@ -152,8 +152,7 @@ MPLSensor::MPLSensor() :
             mEnabled(0), mPendingMask(0)
 {
     FUNC_LOG;
-    inv_error_t rv;
-    int mpu_int_fd, i;
+    int mpu_int_fd;
     char *port = NULL;
 
     ALOGV_IF(EXTRA_VERBOSE, "MPLSensor constructor: numSensors = %d", numSensors);
@@ -167,7 +166,7 @@ MPLSensor::MPLSensor() :
     /* sensor list will be changed based on this variable               */
     mNineAxisEnabled = false;
 
-    for (i = 0; i < ARRAY_SIZE(mPollFds); i++) {
+    for (size_t i = 0; i < ARRAY_SIZE(mPollFds); i++) {
         mPollFds[i].fd = -1;
         mPollFds[i].events = 0;
     }
@@ -308,7 +307,6 @@ void MPLSensor::clearIrqData(bool* irq_set)
 
     for (i = 0; i < ARRAY_SIZE(mPollFds); i++) {
         int cur_fd = mPollFds[i].fd;
-        int j = 0;
         if (mPollFds[i].revents & POLLIN) {
             nread = read(cur_fd, &irqdata, sizeof(irqdata));
             if (nread > 0) {
@@ -366,7 +364,7 @@ void MPLSensor::setPowerStates(int enabled_sensors)
     //record the new sensor state
     inv_error_t rv;
 
-    long sen_mask = mLocalSensorMask & mMasterSensorMask;
+    unsigned long sen_mask = mLocalSensorMask & mMasterSensorMask;
 
     bool changing_sensors = ((inv_get_dl_config()->requested_sensors
             != sen_mask) && (sen_mask != 0));
@@ -636,10 +634,7 @@ void MPLSensor::compassHandler(sensors_event_t* s, uint32_t* pending_mask,
                                 int index)
 {
     VFUNC_LOG;
-    inv_error_t res, res2;
-    float bias_error[3];
-    float total_be;
-    static int bias_error_settled = 0;
+    inv_error_t res;
 
     res = inv_get_float_array(INV_MAGNETOMETER, s->magnetic.v);
 
@@ -661,7 +656,6 @@ void MPLSensor::rvHandler(sensors_event_t* s, uint32_t* pending_mask,
     VFUNC_LOG;
     float quat[4];
     float norm = 0;
-    float ang = 0;
     inv_error_t r;
 
     r = inv_get_float_array(INV_QUATERNION, quat);
@@ -771,8 +765,6 @@ void MPLSensor::orienHandler(sensors_event_t* s, uint32_t* pending_mask,
 {
     VFUNC_LOG;
     inv_error_t res;
-    float euler[3];
-    float heading[1];
     float rot_mat[9];
 
     res = inv_get_float_array(INV_ROTATION_MATRIX, rot_mat);
@@ -833,7 +825,6 @@ int MPLSensor::enable(int32_t handle, int en)
 
     pthread_mutex_lock(&mMplMutex);
     if ((uint32_t(newState) << what) != (mEnabled & (1 << what))) {
-        uint32_t sensor_type;
         short flags = newState;
         mEnabled &= ~(1 << what);
         mEnabled |= (uint32_t(flags) << what);
@@ -971,7 +962,6 @@ int64_t MPLSensor::now_ns(void)
 int MPLSensor::readEvents(sensors_event_t* data, int count)
 {
     //VFUNC_LOG;
-    int i;
     bool irq_set[5] = { false, false, false, false, false };
     inv_error_t rv;
     if (count < 1)
@@ -1111,7 +1101,7 @@ void MPLSensor::wakeEvent()
  *  parameter len gives the length of the buffer pointed to by list
  */
 
-int MPLSensor::populateSensorList(struct sensor_t *list, int len)
+int MPLSensor::populateSensorList(struct sensor_t *list, size_t len)
 {
     int numsensors;
 
