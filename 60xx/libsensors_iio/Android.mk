@@ -25,7 +25,7 @@ LOCAL_MODULE := libinvensense_hal
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_OWNER := invensense
 
-LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
+LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -Werror -Wall
 # Comment out for ICS. Affects Android LOG macros.
 LOCAL_CFLAGS += -DANDROID_JELLYBEAN
 

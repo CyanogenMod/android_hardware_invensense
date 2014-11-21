@@ -3637,7 +3637,7 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
         mDataMarkerDetected = 0;
 
         // handle flush complete event
-        for(int k = 0; k < mFlushSensorEnabledVector.size(); k++) {
+        for(size_t k = 0; k < mFlushSensorEnabledVector.size(); k++) {
             int sendEvent = metaHandler(&mPendingFlushEvents[k], META_DATA_FLUSH_COMPLETE);
             if(sendEvent && count > 0) {
                 *data++ = mPendingFlushEvents[k];
@@ -3725,7 +3725,7 @@ void MPLSensor::buildMpuEvent(void)
     /* append with just read data */
     if (mLeftOverBufferSize > 0) {
         LOGV_IF(0, "append old buffer size=%d", mLeftOverBufferSize);
-        memset(rdata, 0, sizeof(rdata));
+        memset(rdata, 0, sizeof(mIIOBuffer));
         memcpy(rdata, mLeftOverBuffer, mLeftOverBufferSize);
             LOGV_IF(0,
             "HAL:input retrieve old buffer data=:%d, %d, %d, %d,%d, %d, %d, %d,%d, %d, "
@@ -5064,28 +5064,22 @@ int MPLSensor::inv_init_sysfs_attributes(void)
 {
     VFUNC_LOG;
 
-    unsigned char i = 0;
     char sysfs_path[MAX_SYSFS_NAME_LEN];
-    char tbuf[2];
-    char *sptr;
-    char **dptr;
-    int num;
 
     memset(sysfs_path, 0, sizeof(sysfs_path));
 
-    sysfs_names_ptr =
-            (char*)malloc(sizeof(char[MAX_SYSFS_ATTRB][MAX_SYSFS_NAME_LEN]));
-    sptr = sysfs_names_ptr;
-    if (sptr != NULL) {
-        dptr = (char**)&mpu;
-        do {
-            *dptr++ = sptr;
-            memset(sptr, 0, sizeof(sptr));
-            sptr += sizeof(char[MAX_SYSFS_NAME_LEN]);
-        } while (++i < MAX_SYSFS_ATTRB);
-    } else {
+    sysfs_names_ptr = (char*)calloc(MAX_SYSFS_ATTRB,
+                                    sizeof(char[MAX_SYSFS_NAME_LEN]));
+    if (sysfs_names_ptr == NULL) {
         LOGE("HAL:couldn't alloc mem for sysfs paths");
         return -1;
+    }
+
+    char *sptr = sysfs_names_ptr;
+    char **dptr = reinterpret_cast<char **>(&mpu);
+    for (size_t i = 0; i < MAX_SYSFS_ATTRB; i++) {
+      *dptr++ = sptr;
+      sptr += sizeof(char[MAX_SYSFS_NAME_LEN]);
     }
 
     // get proper (in absolute) IIO path & build MPU's sysfs paths
