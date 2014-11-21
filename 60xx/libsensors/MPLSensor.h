@@ -66,7 +66,7 @@ public:
     virtual void handlePowerEvent();
     virtual void sleepEvent();
     virtual void wakeEvent();
-    int populateSensorList(struct sensor_t *list, int len);
+    int populateSensorList(struct sensor_t *list, size_t len);
     void cbOnMotion(uint16_t);
     void cbProcData();
 
