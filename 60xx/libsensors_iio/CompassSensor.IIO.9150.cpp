@@ -36,19 +36,19 @@
 #define COMPASS_MAX_SYSFS_ATTRB sizeof(compassSysFs) / sizeof(char*)
 
 #if defined COMPASS_YAS53x
-#   warning "Invensense compass cal with YAS53x IIO on secondary bus"
+#   pragma message "Invensense compass cal with YAS53x IIO on secondary bus"
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_YAS530"
 #elif defined COMPASS_AK8975
-#   warning "Invensense compass cal with AK8975 on primary bus"
+#   pragma message "Invensense compass cal with AK8975 on primary bus"
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_AK8975"
 #elif defined INVENSENSE_COMPASS_CAL
-#   warning "Invensense compass cal with compass IIO on secondary bus"
+#   pragma message "Invensense compass cal with compass IIO on secondary bus"
 #   define USE_MPL_COMPASS_HAL          (1)
 #   define COMPASS_NAME                 "INV_COMPASS"
 #else
-#   warning "third party compass cal HAL"
+#   pragma message "third party compass cal HAL"
 #   define USE_MPL_COMPASS_HAL          (0)
 // TODO: change to vendor's name
 #   define COMPASS_NAME                 "AKM8975"

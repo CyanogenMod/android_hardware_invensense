@@ -5022,26 +5022,21 @@ int MPLSensor::inv_init_sysfs_attributes(void)
 
     unsigned char i = 0;
     char sysfs_path[MAX_SYSFS_NAME_LEN];
-    char tbuf[2];
-    char *sptr;
-    char **dptr;
-    int num;
 
     memset(sysfs_path, 0, sizeof(sysfs_path));
 
-    sysfs_names_ptr =
-            (char*)malloc(sizeof(char[MAX_SYSFS_ATTRB][MAX_SYSFS_NAME_LEN]));
-    sptr = sysfs_names_ptr;
-    if (sptr != NULL) {
-        dptr = (char**)&mpu;
-        do {
-            *dptr++ = sptr;
-            memset(sptr, 0, sizeof(sptr));
-            sptr += sizeof(char[MAX_SYSFS_NAME_LEN]);
-        } while (++i < MAX_SYSFS_ATTRB);
-    } else {
+    sysfs_names_ptr = (char*)calloc(MAX_SYSFS_ATTRB,
+                                    sizeof(char[MAX_SYSFS_NAME_LEN]));
+    if (sysfs_names_ptr == NULL) {
         LOGE("HAL:couldn't alloc mem for sysfs paths");
         return -1;
+    }
+
+    char *sptr = sysfs_names_ptr;
+    char **dptr = reinterpret_cast<char **>(&mpu);
+    for (size_t i = 0; i < MAX_SYSFS_ATTRB; i++) {
+      *dptr++ = sptr;
+      sptr += sizeof(char[MAX_SYSFS_NAME_LEN]);
     }
 
     // get proper (in absolute) IIO path & build MPU's sysfs paths

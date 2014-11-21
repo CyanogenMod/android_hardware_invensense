@@ -24,7 +24,7 @@ LOCAL_MODULE := libinvensense_hal
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_OWNER := invensense
 
-LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
+LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -Werror -Wall
 
 # ANDROID version check
 MAJOR_VERSION :=$(shell echo $(PLATFORM_VERSION) | cut -f1 -d.)
@@ -119,7 +119,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include/linux
 
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE_TAGS := optional
-LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\"
+LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -Werror -Wall
 
 ifeq ($(VERSION_JB),true)
 LOCAL_CFLAGS += -DANDROID_JELLYBEAN
