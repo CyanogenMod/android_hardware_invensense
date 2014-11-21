@@ -31,17 +31,17 @@
 #ifdef INVENSENSE_COMPASS_CAL
 
 #ifdef COMPASS_YAS53x
-#warning "unified HAL for YAS53x"
+#pragma message "unified HAL for YAS53x"
 #include "CompassSensor.IIO.primary.h"
 #elif COMPASS_AMI306
-#warning "unified HAL for AMI306"
+#pragma message "unified HAL for AMI306"
 #include "CompassSensor.IIO.primary.h"
 #else
-#warning "unified HAL for MPU9150"
+#pragma message "unified HAL for MPU9150"
 #include "CompassSensor.IIO.9150.h"
 #endif
 #else
-#warning "unified HAL for AKM"
+#pragma message "unified HAL for AKM"
 #include "CompassSensor.AKM.h"
 #endif
 
