@@ -167,7 +167,7 @@ int CompassSensor::setDelay(int32_t handle, int64_t ns)
 
 int CompassSensor::turnOffCompassFifo(void)
 {
-    int i, res = 0, tempFd;
+    int res = 0;
     LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
                         0, compassSysFs.compass_fifo_enable, getTimestamp());
     res += write_sysfs_int(compassSysFs.compass_fifo_enable, 0);
@@ -176,7 +176,7 @@ int CompassSensor::turnOffCompassFifo(void)
 
 int CompassSensor::turnOnCompassFifo(void)
 {
-    int i, res = 0, tempFd;
+    int res = 0;
     LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
                         1, compassSysFs.compass_fifo_enable, getTimestamp());
     res += write_sysfs_int(compassSysFs.compass_fifo_enable, 1);
@@ -247,7 +247,7 @@ int CompassSensor::readSample(long *data, int64_t *timestamp)
 {
     VHANDLER_LOG;
 
-    int numEventReceived = 0, done = 0;
+    int done = 0;
 
     ssize_t n = mCompassInputReader.fill(compass_fd);
     if (n < 0) {
