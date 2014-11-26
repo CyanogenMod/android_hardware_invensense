@@ -40,9 +40,10 @@
 #define DEFAULT_POLL_TIME 300
 #define PRESSURE_MAX_SYSFS_ATTRB sizeof(pressureSysFs) / sizeof(char*)
 
+#ifdef TIMER
 static int s_poll_time = -1;
 static int min_poll_time = 50;
-static struct timespec t_pre;
+#endif
 
 /*****************************************************************************/
 
