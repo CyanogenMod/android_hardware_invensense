@@ -15,8 +15,6 @@
 
 LOCAL_PATH := $(call my-dir)
 
-ifneq ($(TARGET_SIMULATOR),true)
-
 # InvenSense fragment of the HAL
 include $(CLEAR_VARS)
 
@@ -98,5 +96,3 @@ LOCAL_MODULE_PATH := $(TARGET_OUT)/lib
 OVERRIDE_BUILT_MODULE_PATH := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)
 LOCAL_STRIP_MODULE := true
 include $(BUILD_PREBUILT)
-
-endif # !TARGET_SIMULATOR

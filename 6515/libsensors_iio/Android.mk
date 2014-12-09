@@ -15,8 +15,6 @@
 
 LOCAL_PATH := $(call my-dir)
 
-#ifneq ($(TARGET_SIMULATOR),true)
-
 # InvenSense fragment of the HAL
 include $(CLEAR_VARS)
 
@@ -82,8 +80,6 @@ LOCAL_CPPFLAGS += -DLINUX=1
 LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
-
-#endif # !TARGET_SIMULATOR
 
 # Build a temporary HAL that links the InvenSense .so
 include $(CLEAR_VARS)
