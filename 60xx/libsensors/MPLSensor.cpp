@@ -443,7 +443,6 @@ void MPLSensor::initMPL()
     FUNC_LOG;
     inv_error_t result;
     unsigned short bias_update_mask = 0xFFFF;
-    struct mldl_cfg *mldl_cfg;
 
     if (inv_dmp_open() != INV_SUCCESS) {
         ALOGE("Fatal Error : could not open DMP correctly.\n");
@@ -478,8 +477,6 @@ void MPLSensor::initMPL()
         const char* error = dlerror();
         ALOGE("libinvensense_mpl.so not found, 9x sensor fusion disabled (%s)",error);
     }
-
-    mldl_cfg = inv_get_dl_config();
 
     if (inv_set_bias_update(bias_update_mask) != INV_SUCCESS) {
         ALOGE("Error : Bias update function could not be set.\n");
