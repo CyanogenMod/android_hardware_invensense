@@ -41,7 +41,6 @@ LOCAL_C_INCLUDES += hardware/invensense/60xx/mlsdk/external/akmd
 LOCAL_SHARED_LIBRARIES := liblog libcutils libutils libdl libmllite libmlplatform
 LOCAL_CPPFLAGS+=-DLINUX=1
 LOCAL_LDFLAGS:=-rdynamic
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
 
