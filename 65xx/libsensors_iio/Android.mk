@@ -15,9 +15,16 @@
 
 LOCAL_PATH := $(call my-dir)
 
+# Too many benign warnings to be fixed later.
+my_ignored_clang_warnings := \
+    -Wno-unused-parameter \
+    -Wno-unused-private-field \
+    -Wno-gnu-designator
+
 # InvenSense fragment of the HAL
 include $(CLEAR_VARS)
 
+LOCAL_CLANG_CFLAGS += $(my_ignored_clang_warnings)
 LOCAL_MODULE := libinvensense_hal
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_OWNER := invensense
@@ -91,6 +98,8 @@ include $(BUILD_SHARED_LIBRARY)
 
 # Build a temporary HAL that links the InvenSense .so
 include $(CLEAR_VARS)
+
+LOCAL_CLANG_CFLAGS += $(my_ignored_clang_warnings)
 ifneq ($(filter dory guppy guppypdk, $(TARGET_DEVICE)),)
 LOCAL_MODULE := sensors.invensense
 else
@@ -183,3 +192,4 @@ OVERRIDE_BUILT_MODULE_PATH := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)
 LOCAL_STRIP_MODULE := true
 include $(BUILD_PREBUILT)
 
+my_ignored_clang_warnings :=
