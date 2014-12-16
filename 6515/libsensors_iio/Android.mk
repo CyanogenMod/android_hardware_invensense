@@ -72,12 +72,10 @@ LOCAL_SHARED_LIBRARIES += libmllite
 LOCAL_SHARED_LIBRARIES += libmplmpu
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mpl
 LOCAL_CPPFLAGS += -DLINUX=1
-LOCAL_PRELINK_MODULE := false
 
 LOCAL_SHARED_LIBRARIES += libmllite
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite
 LOCAL_CPPFLAGS += -DLINUX=1
-LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -109,7 +107,6 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mpl
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include/linux
 
-LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -Werror -Wall
 
