@@ -4710,9 +4710,10 @@ int MPLSensor::populateSensorList(struct sensor_t *list, int len)
     /* first add gyro, accel and compass to the list */
 
     /* fill in gyro/accel values */
-    if(chip_ID == NULL) {
-        LOGE("HAL:Can not get gyro/accel id");
-    }
+    // chip_ID is an array and will never equal to NULL.
+    //if(chip_ID == NULL) {
+    //    LOGE("HAL:Can not get gyro/accel id");
+    //}
     fillGyro(chip_ID, list);
     fillAccel(chip_ID, list);
 
