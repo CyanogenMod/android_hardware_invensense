@@ -177,12 +177,8 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     VFUNC_LOG;
 
     inv_error_t rv;
-    int i, fd;
-    char *port = NULL;
+    int fd;
     char *ver_str;
-    unsigned long mSensorMask;
-    int res;
-    FILE *fptr;
 
     mCompassSensor = compass;
 
@@ -757,7 +753,7 @@ int MPLSensor::onPower(int en)
 
     int res;
 
-    int count, curr_power_state;
+    int curr_power_state;
 
     LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
             en, mpu.power_state, getTimestamp());
@@ -1365,7 +1361,6 @@ int MPLSensor::enable(int32_t handle, int en)
     // pthread_mutex_lock(&mHALMutex);
 
     if ((uint32_t(newState) << what) != (mEnabled & (1 << what))) {
-        uint32_t sensor_type;
         short flags = newState;
         uint32_t lastEnabled = mEnabled, changed = 0;
 
@@ -1768,7 +1763,7 @@ int MPLSensor::readAccelEvents(sensors_event_t* /*data*/, int count)
 
     int numEventReceived = 0;
     input_event const* event;
-    int nb, done = 0;
+    int done = 0;
 
     while (!done && count && mAccelInputReader.readEvent(&event)) {
         int type = event->type;
@@ -1858,7 +1853,7 @@ int MPLSensor::readEvents(sensors_event_t* /*data*/, int /*count*/) {
 
 
     int lp_quaternion_on = 0, nbyte;
-    int i, nb, mask = 0, numEventReceived = 0,
+    int i, mask = 0, numEventReceived = 0,
         sensors = ((mLocalSensorMask & INV_THREE_AXIS_GYRO)? 1 : 0) +
             ((mLocalSensorMask & INV_THREE_AXIS_ACCEL)? 1 : 0) +
             (((mLocalSensorMask & INV_THREE_AXIS_COMPASS) && mCompassSensor->isIntegrated())? 1 : 0);
@@ -2036,7 +2031,6 @@ int MPLSensor::readCompassEvents(sensors_event_t* /*data*/, int count)
 
     int numEventReceived = 0;
     int done = 0;
-    int nb;
 
     // pthread_mutex_lock(&mMplMutex);
     // pthread_mutex_lock(&mHALMutex);
@@ -2113,7 +2107,7 @@ int MPLSensor::getCompassFd() const
 }
 
 int MPLSensor::turnOffAccelFifo() {
-    int i, res, tempFd;
+    int i, res;
     char *accel_fifo_enable[3] = {mpu.accel_x_fifo_enable,
         mpu.accel_y_fifo_enable, mpu.accel_z_fifo_enable};
 
@@ -2671,7 +2665,6 @@ int MPLSensor::inv_init_sysfs_attributes(void)
     char sysfs_path[MAX_SYSFS_NAME_LEN], iio_trigger_path[MAX_SYSFS_NAME_LEN];
     char *sptr;
     char **dptr;
-    int num;
 
     sysfs_names_ptr =
             (char*)calloc(1, sizeof(char[MAX_SYSFS_ATTRB][MAX_SYSFS_NAME_LEN]));
