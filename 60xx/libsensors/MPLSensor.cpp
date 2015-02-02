@@ -268,10 +268,6 @@ MPLSensor::MPLSensor() :
     //setup the FIFO contents
     setupFIFO();
 
-    //we start the motion processing only when a sensor is enabled...
-    //rv = inv_dmp_start();
-    //ALOGE_IF(rv != INV_SUCCESS, "Fatal error: could not start the DMP correctly. (code = %d)\n", rv);
-    //dmp_started = true;
 
     pthread_mutex_unlock(&mMplMutex);
 
