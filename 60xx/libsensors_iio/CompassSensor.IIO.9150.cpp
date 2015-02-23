@@ -288,7 +288,6 @@ void CompassSensor::fillList(struct sensor_t *list)
             list->maxRange = COMPASS_MPU9150_RANGE;
             /* since target platform would use AK8963 instead of AK8975,
                need to adopt AK8963's resolution here */
-            // list->resolution = COMPASS_MPU9150_RESOLUTION;
             list->resolution = COMPASS_AKM8963_RESOLUTION;
             list->power = COMPASS_MPU9150_POWER;
             list->minDelay = COMPASS_MPU9150_MINDELAY;
