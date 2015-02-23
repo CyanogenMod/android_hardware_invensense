@@ -588,8 +588,6 @@ void MPLSensor::loadDMP()
         LOGV_IF(PROCESS_VERBOSE, "HAL:DMP loaded");
     }
     fclose(fptr);
-
-    // onDMP(1);                //Can't enable here. See note onDMP()
 }
 
 void MPLSensor::inv_get_sensors_orientation()
@@ -742,7 +740,6 @@ int MPLSensor::setAccelInitialState()
         mPendingEvents[Accelerometer].data[1] = value * CONVERT_A_Y;
         value = absinfo_z.value;
         mPendingEvents[Accelerometer].data[2] = value * CONVERT_A_Z;
-        //mHasPendingEvent = true;
     }
     return 0;
 }
@@ -1357,9 +1354,6 @@ int MPLSensor::enable(int32_t handle, int en)
     LOGV_IF(PROCESS_VERBOSE,
             "HAL:%s sensor state change what=%d", sname.string(), what);
 
-    // pthread_mutex_lock(&mMplMutex);
-    // pthread_mutex_lock(&mHALMutex);
-
     if ((uint32_t(newState) << what) != (mEnabled & (1 << what))) {
         short flags = newState;
         uint32_t lastEnabled = mEnabled, changed = 0;
@@ -1406,9 +1400,6 @@ int MPLSensor::enable(int32_t handle, int en)
         LOGV_IF(PROCESS_VERBOSE, "HAL:changed = %d", changed);
         enableSensors(sen_mask, flags, changed);
     }
-
-    // pthread_mutex_unlock(&mMplMutex);
-    // pthread_mutex_unlock(&mHALMutex);
 
 #ifdef INV_PLAYBACK_DBG
     /* apparently the logging needs to be go through this sequence
@@ -1543,9 +1534,7 @@ int MPLSensor::setDelay(int32_t handle, int64_t ns)
             break;
     }
 
-    // pthread_mutex_lock(&mHALMutex);
     int res = update_delay();
-    // pthread_mutex_unlock(&mHALMutex);
     return res;
 }
 
@@ -1868,12 +1857,8 @@ int MPLSensor::readEvents(sensors_event_t* /*data*/, int /*count*/) {
         }
     }
 
-    // pthread_mutex_lock(&mMplMutex);
-    // pthread_mutex_lock(&mHALMutex);
-
     ssize_t rsize = read(iio_fd, rdata, nbyte);
     if (sensors == 0) {
-        // read(iio_fd, rdata, nbyte);
         rsize = read(iio_fd, rdata, sizeof(mIIOBuffer));
     }
 
@@ -2015,9 +2000,6 @@ int MPLSensor::readEvents(sensors_event_t* /*data*/, int /*count*/) {
                     mCachedQuaternionData[2], mCachedQuaternionData[3], mSensorTimestamp);
     }
 
-    // pthread_mutex_unlock(&mMplMutex);
-    // pthread_mutex_unlock(&mHALMutex);
-
     return numEventReceived;
 }
 
@@ -2031,9 +2013,6 @@ int MPLSensor::readCompassEvents(sensors_event_t* /*data*/, int count)
 
     int numEventReceived = 0;
     int done = 0;
-
-    // pthread_mutex_lock(&mMplMutex);
-    // pthread_mutex_lock(&mHALMutex);
 
     done = mCompassSensor->readSample(mCachedCompassData, &mCompassTimestamp);
 #ifdef COMPASS_YAS53x
@@ -2056,9 +2035,6 @@ int MPLSensor::readCompassEvents(sensors_event_t* /*data*/, int count)
                     mCachedCompassData[2], mCompassTimestamp);
         }
     }
-
-    // pthread_mutex_unlock(&mMplMutex);
-    // pthread_mutex_unlock(&mHALMutex);
 
     return numEventReceived;
 }
