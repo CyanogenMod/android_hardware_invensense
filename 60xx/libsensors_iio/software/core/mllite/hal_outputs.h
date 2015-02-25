@@ -38,10 +38,6 @@ extern "C" {
     inv_error_t inv_start_hal_outputs(void);
     inv_error_t inv_stop_hal_outputs(void);
 
-    // Set data rates for virtual sensors
-    void inv_set_linear_acceleration_sample_rate(long sample_rate_us);
-    void inv_set_gravity_sample_rate(long sample_rate_us);
-
 #ifdef __cplusplus
 }
 #endif
