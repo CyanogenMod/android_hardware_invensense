@@ -42,9 +42,21 @@ struct hal_output_t {
     int nine_axis_status;
     inv_biquad_filter_t lp_filter[3];
     float compass_float[3];
+    long linear_acceleration_sample_rate_us;
+    long gravity_sample_rate_us;
 };
 
 static struct hal_output_t hal_out;
+
+void inv_set_linear_acceleration_sample_rate(long sample_rate_us)
+{
+    hal_out.linear_acceleration_sample_rate_us = sample_rate_us;
+}
+
+void inv_set_gravity_sample_rate(long sample_rate_us)
+{
+    hal_out.gravity_sample_rate_us = sample_rate_us;
+}
 
 /** Acceleration (m/s^2) in body frame.
 * @param[out] values Acceleration in m/s^2 includes gravity. So while not in motion, it
@@ -85,8 +97,9 @@ int inv_get_sensor_type_linear_acceleration(float *values, int8_t *accuracy,
         inv_time_t * timestamp)
 {
     long gravity[3], accel[3];
+    inv_time_t timestamp1;
 
-    inv_get_accel_set(accel, accuracy, timestamp);
+    inv_get_accel_set(accel, accuracy, &timestamp1);
     inv_get_gravity(gravity);
     accel[0] -= gravity[0] >> 14;
     accel[1] -= gravity[1] >> 14;
@@ -95,7 +108,7 @@ int inv_get_sensor_type_linear_acceleration(float *values, int8_t *accuracy,
     values[1] = accel[1] * ACCEL_CONVERSION;
     values[2] = accel[2] * ACCEL_CONVERSION;
 
-    return hal_out.nine_axis_status;
+    return inv_get_6_axis_gyro_accel_timestamp(hal_out.linear_acceleration_sample_rate_us, timestamp);
 }
 
 /** Gravity vector (m/s^2) in Body Frame.
@@ -109,19 +122,13 @@ int inv_get_sensor_type_gravity(float *values, int8_t *accuracy,
                                  inv_time_t * timestamp)
 {
     long gravity[3];
-    int status;
 
     *accuracy = (int8_t) hal_out.accuracy_quat;
-    *timestamp = hal_out.nav_timestamp;
     inv_get_gravity(gravity);
     values[0] = (gravity[0] >> 14) * ACCEL_CONVERSION;
     values[1] = (gravity[1] >> 14) * ACCEL_CONVERSION;
     values[2] = (gravity[2] >> 14) * ACCEL_CONVERSION;
-    if ((hal_out.accel_status & INV_NEW_DATA) || (hal_out.gyro_status & INV_NEW_DATA))
-        status = 1;
-    else
-        status = 0;
-    return status;
+    return inv_get_6_axis_gyro_accel_timestamp(hal_out.gravity_sample_rate_us, timestamp);
 }
 
 /* Converts fixed point to rad/sec. Fixed point has 1 dps = 2^16.
