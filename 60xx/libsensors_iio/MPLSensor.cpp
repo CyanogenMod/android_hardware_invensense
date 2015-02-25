@@ -1588,8 +1588,6 @@ int MPLSensor::update_delay() {
         inv_set_gyro_sample_rate(mplGyroRate);
         inv_set_accel_sample_rate(mplAccelRate);
         inv_set_compass_sample_rate(mplCompassRate);
-        inv_set_linear_acceleration_sample_rate(rateInus);
-        inv_set_gravity_sample_rate(rateInus);
 
         /* TODO: Test 200Hz */
         // inv_set_gyro_sample_rate(5000);
@@ -1886,10 +1884,9 @@ int MPLSensor::readEvents(sensors_event_t* /*data*/, int /*count*/) {
             ((mLocalSensorMask & INV_THREE_AXIS_ACCEL)? 6: 0)));
 #endif
 
-    if (rsize != nbyte) {
+    if (rsize < (nbyte - 8)) {
         LOGE("HAL:ERR Full data packet was not read. rsize=%zd nbyte=%d sensors=%d errno=%d(%s)",
              rsize, nbyte, sensors, errno, strerror(errno));
-        rsize = read(iio_fd, rdata, sizeof(mIIOBuffer));
         return -1;
     }
 
