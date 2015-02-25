@@ -26,6 +26,10 @@ extern "C" {
 #define INV_TEMP_NEW 8
 /** This is a new sample of quaternion data */
 #define INV_QUAT_NEW 16
+/** Set if quaternion is 6-axis from DMP */
+#define INV_QUAT_6AXIS 1024
+/** Set if quaternion is 3-axis from DMP */
+#define INV_QUAT_3AXIS 4096
 
 /** Set if the data is contiguous. Typically not set if a sample was skipped */
 #define INV_CONTIGUOUS 16
@@ -98,6 +102,7 @@ struct inv_quat_sensor_t {
     * INV_CALIBRATED_SET if calibrated data has been solved for */
     int status;
     inv_time_t timestamp;
+    inv_time_t timestamp_prev;
     long sample_rate_us;
     long sample_rate_ms;
 };
@@ -225,6 +230,8 @@ int inv_get_compass_disturbance(void);
 inv_error_t inv_get_gyro_orient(int *orient);
 inv_error_t inv_get_accel_orient(int *orient);
 
+// internal
+int inv_get_6_axis_gyro_accel_timestamp(long sample_rate_us, inv_time_t *ts);
 
 #ifdef __cplusplus
 }
