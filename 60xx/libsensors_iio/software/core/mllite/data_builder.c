@@ -62,6 +62,7 @@ struct inv_data_builder_t {
     struct process_t process[INV_MAX_DATA_CB];
     struct inv_db_save_t save;
     int compass_disturbance;
+    int mode;
 #ifdef INV_PLAYBACK_DBG
     int debug_mode;
     int last_mode;
@@ -237,6 +238,117 @@ void inv_set_accel_sample_rate(long sample_rate_us)
     if (sensors.accel.bandwidth == 0) {
         sensors.accel.bandwidth = (int)(1000000L / sample_rate_us);
     }
+}
+
+/** Pick the smallest non-negative number. Priority to td1 on equal
+* If both are negative, return the largest.
+*/
+static int inv_pick_best_time_difference(long td1, long td2)
+{
+    if (td1 >= 0) {
+        if (td2 >= 0) {
+            if (td1 <= td2) {
+                // td1
+                return 0;
+            } else {
+                // td2
+                return 1;
+            }
+        } else {
+            // td1
+            return 0;
+        }
+    } else if (td2 >= 0) {
+        // td2
+        return 1;
+    } else {
+        // Both are negative
+        if (td1 >= td2) {
+            // td1
+            return 0;
+        } else {
+            // td2
+            return 1;
+        }
+    }
+}
+
+/** Returns timestame based upon a raw sensor, and returns if that sample has a new piece of data.
+*/
+static int inv_raw_sensor_timestamp(int sensor_number, inv_time_t *ts)
+{
+    int status = 0;
+    switch (sensor_number) {
+    case 0: // Quat
+        *ts = sensors.quat.timestamp;
+        if (inv_data_builder.mode & INV_QUAT_NEW)
+            if (sensors.quat.timestamp_prev != sensors.quat.timestamp)
+                status = 1;
+        return status;
+    case 1: // Gyro
+        *ts = sensors.gyro.timestamp;
+        if (inv_data_builder.mode & INV_GYRO_NEW)
+            if (sensors.gyro.timestamp_prev != sensors.gyro.timestamp)
+                status = 1;
+        return status;
+    case 2: // Accel
+        *ts = sensors.accel.timestamp;
+        if (inv_data_builder.mode & INV_ACCEL_NEW)
+            if (sensors.accel.timestamp_prev != sensors.accel.timestamp)
+                status = 1;
+        return status;
+   case 3: // Compass
+        *ts = sensors.compass.timestamp;
+        if (inv_data_builder.mode & INV_MAG_NEW)
+            if (sensors.compass.timestamp_prev != sensors.compass.timestamp)
+                status = 1;
+        return status;
+    default:
+        *ts = 0;
+        return 0;
+    }
+    return 0;
+}
+
+/** Gets best timestamp and if there is a new piece of data for a 9-axis sensor combination.
+* It does this by finding a raw sensor that has the closest sample rate that is at least as
+* often desired. It also returns if that raw sensor has a new piece of data.
+* Priority is Quaternion-6axis, Quaternion 3-axis, Gyro, Accel
+* @return Returns 1, if the raw sensor being attached has new data, 0 otherwise.
+*/
+int inv_get_6_axis_gyro_accel_timestamp(long sample_rate_us, inv_time_t *ts)
+{
+    long td[2];
+    int idx;
+
+    if ((sensors.quat.status & (INV_QUAT_6AXIS | INV_SENSOR_ON)) == (INV_QUAT_6AXIS | INV_SENSOR_ON)) {
+        // Sensor number is 0 (Quat)
+        return inv_raw_sensor_timestamp(0, ts);
+    } else if ((sensors.accel.status & INV_SENSOR_ON) == 0) {
+        return 0; // Accel must be on or 6-axis quat must be on
+    }
+
+    // At this point, we know accel is on. Check if 3-axis quat is on
+    td[0] = sample_rate_us - sensors.quat.sample_rate_us;
+    td[1] = sample_rate_us - sensors.accel.sample_rate_us;
+    if ((sensors.quat.status & (INV_QUAT_3AXIS | INV_SENSOR_ON)) == (INV_QUAT_3AXIS | INV_SENSOR_ON)) {
+        idx = inv_pick_best_time_difference(td[0], td[1]);
+        idx *= 2;
+        // 0 = quat, 3=accel
+        return inv_raw_sensor_timestamp(idx, ts);
+    }
+
+    // No Quaternion data from outside, Gyro must be on
+    if ((sensors.gyro.status & INV_SENSOR_ON) == 0) {
+        return 0; // Gyro must be on
+    }
+
+    td[0] = sample_rate_us - sensors.gyro.sample_rate_us;
+    idx = inv_pick_best_time_difference(td[0], td[1]);
+    idx *= 2; // 0=gyro 2=accel
+    idx++;
+    // 1 = gyro, 3=accel
+    return inv_raw_sensor_timestamp(idx, ts);
 }
 
 /** Set Compass Sample rate in micro seconds.
@@ -895,7 +1007,6 @@ inv_error_t inv_execute_on_data(void)
 {
     inv_error_t result, first_error;
     int kk;
-    int mode;
 
 #ifdef INV_PLAYBACK_DBG
     if (inv_data_builder.debug_mode == RD_RECORD) {
@@ -904,22 +1015,22 @@ inv_error_t inv_execute_on_data(void)
     }
 #endif
     // Determine what new data we have
-    mode = 0;
+    inv_data_builder.mode = 0;
     if (sensors.gyro.status & INV_NEW_DATA)
-        mode |= INV_GYRO_NEW;
+        inv_data_builder.mode |= INV_GYRO_NEW;
     if (sensors.accel.status & INV_NEW_DATA)
-        mode |= INV_ACCEL_NEW;
+        inv_data_builder.mode |= INV_ACCEL_NEW;
     if (sensors.compass.status & INV_NEW_DATA)
-        mode |= INV_MAG_NEW;
+        inv_data_builder.mode |= INV_MAG_NEW;
     if (sensors.temp.status & INV_NEW_DATA)
-        mode |= INV_TEMP_NEW;
+        inv_data_builder.mode |= INV_TEMP_NEW;
     if (sensors.quat.status & INV_QUAT_NEW)
-        mode |= INV_QUAT_NEW;
+        inv_data_builder.mode |= INV_QUAT_NEW;
 
     first_error = INV_SUCCESS;
 
     for (kk = 0; kk < inv_data_builder.num_cb; ++kk) {
-        if (mode & inv_data_builder.process[kk].data_required) {
+        if (inv_data_builder.mode & inv_data_builder.process[kk].data_required) {
             result = inv_data_builder.process[kk].func(&sensors);
             if (result && !first_error) {
                 first_error = result;
