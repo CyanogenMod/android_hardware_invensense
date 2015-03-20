@@ -196,5 +196,14 @@ int PressureSensor::inv_init_sysfs_attributes(void)
  
     sprintf(pressureSysFs.pressure_enable, "%s%s", mSysfsPath, "/pressure_enable");
     sprintf(pressureSysFs.pressure_rate, "%s%s", mSysfsPath, "/pressure_rate");
+
+    // Supported by driver ?
+    FILE  *sysfsfp;
+    sysfsfp = fopen(pressureSysFs.pressure_rate, "r");
+    if (sysfsfp == NULL) {
+        LOGE("HAL: HAL configured to support Pressure sensor but not by driver");
+    } else {
+        fclose(sysfsfp);
+    }
     return 0;
 }
