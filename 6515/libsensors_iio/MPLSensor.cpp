@@ -2909,6 +2909,18 @@ int MPLSensor::scHandler(sensors_event_t* s)
     LOGV_IF(HANDLER_DATA, "HAL:sc data: %lld - %lld - %d",
             s->step_counter, s->timestamp, update);
 #endif
+
+    if (s->timestamp == 0 && update) {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        s->timestamp = (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
+                // workaround for some platform which has gap between monotonic clock
+                // and Android SystemClock.
+                // Subtract 100ms not to point the future for SystemClock.
+                // s->timestamp -= 100000000LL;
+        LOGV_IF(0, "HAL:sc timestamp %lld", s->timestamp);
+    }
+
     return update;
 }
 
@@ -4975,18 +4987,6 @@ void MPLSensor::fillAccel(const char* accel, struct sensor_t *list)
             list[Accelerometer].power = ACCEL_MPU6500_POWER;
             list[Accelerometer].minDelay = ACCEL_MPU6500_MINDELAY;
             return;
-        } else if (accel != NULL && strcmp(accel, "MPU6500") == 0) {
-            list[Accelerometer].maxRange = ACCEL_MPU6500_RANGE;
-            list[Accelerometer].resolution = ACCEL_MPU6500_RESOLUTION;
-            list[Accelerometer].power = ACCEL_MPU6500_POWER;
-            list[Accelerometer].minDelay = ACCEL_MPU6500_MINDELAY;
-            return;
-        } else if (accel != NULL && strcmp(accel, "MPU6500") == 0) {
-            list[Accelerometer].maxRange = ACCEL_MPU6500_RANGE;
-            list[Accelerometer].resolution = ACCEL_MPU6500_RESOLUTION;
-            list[Accelerometer].power = ACCEL_MPU6500_POWER;
-            list[Accelerometer].minDelay = ACCEL_MPU6500_MINDELAY;
-            return;
         } else if (accel != NULL && strcmp(accel, "MPU9150") == 0) {
             list[Accelerometer].maxRange = ACCEL_MPU9150_RANGE;
             list[Accelerometer].resolution = ACCEL_MPU9150_RESOLUTION;
@@ -5759,7 +5759,13 @@ int MPLSensor::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
     // limit all rates to reasonable ones */
     if (period_ns < 5000000LL) {
         period_ns = 5000000LL;
+    } else if (period_ns > 200000000LL) {
+        period_ns = 200000000LL;
     }
+
+    LOGV_IF(PROCESS_VERBOSE,
+            "HAL:batch after applying upper and lower limit: %llu ns, (%.2f Hz)",
+			period_ns, 1000000000.f / period_ns);
 
     switch (what) {
     case Gyro:
