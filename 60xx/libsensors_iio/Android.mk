@@ -71,6 +71,10 @@ LOCAL_SHARED_LIBRARIES += libmllite
 LOCAL_SHARED_LIBRARIES += libmplmpu
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mpl
 LOCAL_CPPFLAGS += -DLINUX=1
+# Experimental
+ifeq ($(BOARD_INV_LIBMLLITE_FROM_SOURCE),true)
+LOCAL_CPPFLAGS += -DLIBMLLITE_FROM_SOURCE
+endif
 LOCAL_PRELINK_MODULE := false
 
 include $(BUILD_SHARED_LIBRARY)
@@ -87,6 +91,8 @@ OVERRIDE_BUILT_MODULE_PATH := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)
 LOCAL_STRIP_MODULE := true
 include $(BUILD_PREBUILT)
 
+# Experimental
+ifneq ($(BOARD_INV_LIBMLLITE_FROM_SOURCE),true)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libmllite
 LOCAL_SRC_FILES := libmllite.so
@@ -98,5 +104,20 @@ LOCAL_MODULE_PATH := $(TARGET_OUT)/lib
 OVERRIDE_BUILT_MODULE_PATH := $(TARGET_OUT_INTERMEDIATE_LIBRARIES)
 LOCAL_STRIP_MODULE := true
 include $(BUILD_PREBUILT)
+else
+include $(CLEAR_VARS)
+LOCAL_CFLAGS += -DANDROID_JELLYBEAN
+LOCAL_CFLAGS += -DLINUX=1
+LOCAL_MODULE := libmllite
+LOCAL_SRC_FILES := $(call all-c-files-under, software/core/mllite)
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/mllite/linux
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/software/core/driver/include/linux
+LOCAL_MODULE_OWNER := invensense
+LOCAL_MODULE_PATH := $(TARGET_OUT)/lib
+LOCAL_SHARED_LIBRARIES := liblog
+include $(BUILD_SHARED_LIBRARY)
+endif
 
 endif # !TARGET_SIMULATOR
