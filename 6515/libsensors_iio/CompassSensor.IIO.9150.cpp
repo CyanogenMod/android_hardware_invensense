@@ -332,6 +332,16 @@ void CompassSensor::fillList(struct sensor_t *list)
             return;
         }
         if(!strcmp(compass, "compass")
+                || !strcmp(compass, "INV_AK09912")
+                || !strcmp(compass, "AK09912")
+                || !strcmp(compass, "ak09912")) {
+            list->maxRange = COMPASS_AKM9912_RANGE;
+            list->resolution = COMPASS_AKM9912_RESOLUTION;
+            list->power = COMPASS_AKM9912_POWER;
+            list->minDelay = COMPASS_AKM9912_MINDELAY;
+            return;
+        }
+        if(!strcmp(compass, "compass")
                 || !strncmp(compass, "mlx90399",3)
                 || !strncmp(compass, "MLX90399",3)) {
             list->maxRange = COMPASS_MPU9350_RANGE;
