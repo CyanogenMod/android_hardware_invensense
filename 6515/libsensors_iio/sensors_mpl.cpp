@@ -438,18 +438,14 @@ static int open_sensors(const struct hw_module_t* module, const char* id,
     memset(&dev->device, 0, sizeof(sensors_poll_device_1));
 
     dev->device.common.tag = HARDWARE_DEVICE_TAG;
-#if defined ANDROID_KITKAT || defined ANDROID_LOLLIPOP
     dev->device.common.version  = SENSORS_DEVICE_API_VERSION_1_3;
     dev->device.flush           = poll__flush;
-#else
-    dev->device.common.version  = SENSORS_DEVICE_API_VERSION_1_0;
-#endif
     dev->device.common.module   = const_cast<hw_module_t*>(module);
     dev->device.common.close    = poll__close;
     dev->device.activate        = poll__activate;
     dev->device.setDelay        = poll__setDelay;
     dev->device.poll            = poll__poll;
-    dev->device.batch           = poll__batch; 
+    dev->device.batch           = poll__batch;
 
     *device = &dev->device.common;
     status = 0;
