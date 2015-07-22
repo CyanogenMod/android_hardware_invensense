@@ -81,6 +81,14 @@ static struct hw_module_methods_t sensors_module_methods = {
         open: open_sensors
 };
 
+static int sensors_set_operation_mode(unsigned int mode)
+{
+    LOGI("%s", __FUNCTION__);
+    LOGI("%s: stub function: ignoring mode request (%d)", __FUNCTION__,
+                 mode);
+    return 0;
+}
+
 struct sensors_module_t HAL_MODULE_INFO_SYM = {
         common: {
                 tag: HARDWARE_MODULE_TAG,
@@ -94,6 +102,7 @@ struct sensors_module_t HAL_MODULE_INFO_SYM = {
                 reserved: {0}
         },
         get_sensors_list: sensors__get_sensors_list,
+        set_operation_mode: sensors_set_operation_mode
 };
 
 struct sensors_poll_context_t {

@@ -117,20 +117,6 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
                          mAccelBiasApplied(false),
                          mPendingMask(0),
                          mSensorMask(0),
-                         mMplFeatureActiveMask(0),
-                         mFeatureActiveMask(0),
-                         mDmpOn(0),
-                         mPedUpdate(0),
-                         mPressureUpdate(0),
-                         mQuatSensorTimestamp(0),
-                         mStepSensorTimestamp(0),
-                         mLastStepCount(-1),
-                         mLeftOverBufferSize(0),
-                         mInitial6QuatValueAvailable(0),
-                         mFlushBatchSet(0),
-                         mSkipReadEvents(0),
-                         mDataMarkerDetected(0),
-                         mEmptyDataMarkerDetected(0),
                          mGyroBatchRate(0),
                          mAccelBatchRate(0),
                          mCompassBatchRate(0),
@@ -144,7 +130,20 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
                          mResetRate(0),
                          mDataInterrupt(0),
                          mFirstBatchCall(1),
-                         mEnableCalled(1) {
+                         mEnableCalled(1),
+                         mMplFeatureActiveMask(0),
+                         mFeatureActiveMask(0),
+                         mDmpOn(0),
+                         mPedUpdate(0),
+                         mPressureUpdate(0),
+                         mQuatSensorTimestamp(0),
+                         mStepSensorTimestamp(0),
+                         mLastStepCount(-1),
+                         mLeftOverBufferSize(0),
+                         mInitial6QuatValueAvailable(0),
+                         mSkipReadEvents(0),
+                         mDataMarkerDetected(0),
+                         mEmptyDataMarkerDetected(0) {
     VFUNC_LOG;
 
     inv_error_t rv;
@@ -5759,7 +5758,11 @@ int MPLSensor::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
 
     LOGV_IF(PROCESS_VERBOSE,
             "HAL:batch after applying upper and lower limit: %llu ns, (%.2f Hz)",
-			period_ns, 1000000000.f / period_ns);
+            period_ns, 1000000000.f / period_ns);
+
+    LOGV_IF(PROCESS_VERBOSE,
+            "HAL:batch after applying upper and lower limit: %llu ns, (%.2f Hz)",
+            period_ns, 1000000000.f / period_ns);
 
     switch (what) {
     case Gyro:
@@ -6543,7 +6546,7 @@ int MPLSensor::calcBatchDataRates(int64_t *gyro_rate, int64_t *accel_rate, int64
 #ifdef ENABLE_PRESSURE
     int64_t pressureRate;
 #endif
-    int64_t quatRate;
+    int64_t quatRate = 0;
 
     int mplGyroRate;
     int mplAccelRate;
