@@ -1822,7 +1822,7 @@ int MPLSensor::enableDmpPedometer(int en, int interruptMode)
             mFeatureActiveMask |= INV_DMP_PEDOMETER_STEP;
         }
 
-        clock_gettime(CLOCK_MONOTONIC, &mt_pre);
+        clock_gettime(CLOCK_BOOTTIME, &mt_pre);
     } else {
         if (interruptMode) {
             mFeatureActiveMask &= ~INV_DMP_PEDOMETER;
@@ -2827,7 +2827,7 @@ int MPLSensor::smHandler(sensors_event_t* s)
 
     /* Capture timestamp in HAL */
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+    clock_gettime(CLOCK_BOOTTIME, &ts);
     s->timestamp = (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
 
     LOGV_IF(HANDLER_DATA, "HAL:sm data: %f - %lld - %d",
@@ -2886,7 +2886,7 @@ int MPLSensor::sdHandler(sensors_event_t* s)
 
     /* get current timestamp */
     struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts) ;
+    clock_gettime(CLOCK_BOOTTIME, &ts) ;
     s->timestamp = (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
 
     LOGV_IF(HANDLER_DATA, "HAL:sd data: %f - %lld - %d",
@@ -2912,7 +2912,7 @@ int MPLSensor::scHandler(sensors_event_t* s)
 
     if (s->timestamp == 0 && update) {
         struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
+        clock_gettime(CLOCK_BOOTTIME, &ts);
         s->timestamp = (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
                 // workaround for some platform which has gap between monotonic clock
                 // and Android SystemClock.
@@ -4695,7 +4695,7 @@ int MPLSensor::readDmpOrientEvents(sensors_event_t* data, int count)
         temp.screen_orientation = screen_orientation;
 #endif
         struct timespec ts;
-        clock_gettime(CLOCK_MONOTONIC, &ts);
+        clock_gettime(CLOCK_BOOTTIME, &ts);
         temp.timestamp = (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
 
         *data++ = temp;
@@ -4767,7 +4767,7 @@ bool MPLSensor::hasStepCountPendingEvents(void)
         struct timespec t_now;
         int64_t interval = 0;
 
-        clock_gettime(CLOCK_MONOTONIC, &t_now);
+        clock_gettime(CLOCK_BOOTTIME, &t_now);
         interval = ((int64_t(t_now.tv_sec) * 1000000000LL + t_now.tv_nsec) -
                     (int64_t(mt_pre.tv_sec) * 1000000000LL + mt_pre.tv_nsec));
 
@@ -4777,7 +4777,7 @@ bool MPLSensor::hasStepCountPendingEvents(void)
                     interval, mStepCountPollTime);
             return false;
         } else {
-            clock_gettime(CLOCK_MONOTONIC, &mt_pre);
+            clock_gettime(CLOCK_BOOTTIME, &mt_pre);
             LOGV_IF(0, "Step Count previous time: %ld ms",
                     mt_pre.tv_nsec / 1000);
             return true;
@@ -5230,6 +5230,7 @@ int MPLSensor::inv_init_sysfs_attributes(void)
 
     // get proper (in absolute) IIO path & build MPU's sysfs paths
     inv_get_sysfs_path(sysfs_path);
+    LOGV_IF(true, "njv Invensense sysfs path : %s", sysfs_path);
 
     memcpy(mSysfsPath, sysfs_path, sizeof(sysfs_path));
     sprintf(mpu.key, "%s%s", sysfs_path, "/key");
