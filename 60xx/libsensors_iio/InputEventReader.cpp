@@ -25,6 +25,7 @@
 #include <sys/cdefs.h>
 #include <sys/types.h>
 
+#include <string.h>
 #include <linux/input.h>
 
 #include <cutils/log.h>
