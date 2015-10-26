@@ -37,6 +37,7 @@
 #include <string.h>
 #include <linux/input.h>
 #include <utils/Atomic.h>
+#include <utils/SystemClock.h>
 
 #include "MPLSensor.h"
 #include "PressureSensor.IIO.secondary.h"
@@ -75,7 +76,7 @@ static FILE *logfile = NULL;
  * MPLSensor class implementation
  ******************************************************************************/
 
-static struct timespec mt_pre;
+static int64_t mt_pre_ns;
 
 // following extended initializer list would only be available with -std=c++11
 //  or -std=gnu+11
@@ -97,6 +98,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
                          mDmpPedometerEnabled(0),
                          mDmpStepCountEnabled(0),
                          mEnabled(0),
+                         mEnabledCached(0),
                          mBatchEnabled(0),
                          mOldBatchEnabledMask(0),
                          mAccelInputReader(4),
@@ -142,6 +144,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
                          mLeftOverBufferSize(0),
                          mInitial6QuatValueAvailable(0),
                          mSkipReadEvents(0),
+                         mSkipExecuteOnData(0),
                          mDataMarkerDetected(0),
                          mEmptyDataMarkerDetected(0) {
     VFUNC_LOG;
@@ -165,6 +168,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     memset(mAccelOrientation, 0, sizeof(mAccelOrientation));
     memset(mInitial6QuatValue, 0, sizeof(mInitial6QuatValue));
     mFlushSensorEnabledVector.setCapacity(NumSensors);
+    memset(mEnabledTime, 0, sizeof(mEnabledTime));
 
     /* setup sysfs paths */
     inv_init_sysfs_attributes();
@@ -1094,7 +1098,7 @@ int MPLSensor::setDmpFeature(int en)
     int res = 0;
 
     // set sensor engine and fifo
-    if ((mFeatureActiveMask & DMP_FEATURE_MASK) || en) {
+    if (((mFeatureActiveMask & ~INV_DMP_BATCH_MODE) & DMP_FEATURE_MASK) || en) {
         if ((mFeatureActiveMask & INV_DMP_6AXIS_QUATERNION) ||
                 (mFeatureActiveMask & INV_DMP_PED_QUATERNION) ||
                 (mFeatureActiveMask & INV_DMP_QUATERNION)) {
@@ -1821,7 +1825,7 @@ int MPLSensor::enableDmpPedometer(int en, int interruptMode)
             mFeatureActiveMask |= INV_DMP_PEDOMETER_STEP;
         }
 
-        clock_gettime(CLOCK_BOOTTIME, &mt_pre);
+        mt_pre_ns = android::elapsedRealtimeNano();
     } else {
         if (interruptMode) {
             mFeatureActiveMask &= ~INV_DMP_PEDOMETER;
@@ -2612,6 +2616,12 @@ int MPLSensor::gyroHandler(sensors_event_t* s)
     update = inv_get_sensor_type_gyroscope(s->gyro.v, &s->gyro.status,
                                            &s->timestamp);
 #endif
+    if (!mEnabledTime[Gyro] || !(s->timestamp > mEnabledTime[Gyro])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:gyro incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[Gyro], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     LOGV_IF(HANDLER_DATA, "HAL:gyro data : %+f %+f %+f -- %lld - %d",
             s->gyro.v[0], s->gyro.v[1], s->gyro.v[2], s->timestamp, update);
     return update;
@@ -2628,6 +2638,12 @@ int MPLSensor::rawGyroHandler(sensors_event_t* s)
 	update = inv_get_sensor_type_gyroscope_raw(s->uncalibrated_gyro.uncalib,
                                                &s->gyro.status, &s->timestamp);
 #endif
+    if (!mEnabledTime[RawGyro] || !(s->timestamp > mEnabledTime[RawGyro])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:raw gyro incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[RawGyro], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     if(update) {
         memcpy(s->uncalibrated_gyro.bias, mGyroBias, sizeof(mGyroBias));
         LOGV_IF(HANDLER_DATA,"HAL:gyro bias data : %+f %+f %+f -- %lld - %d",
@@ -2652,6 +2668,12 @@ int MPLSensor::accelHandler(sensors_event_t* s)
     update = inv_get_sensor_type_accelerometer(
         s->acceleration.v, &s->acceleration.status, &s->timestamp);
 #endif
+    if (!mEnabledTime[Accelerometer] || !(s->timestamp > mEnabledTime[Accelerometer])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:accel incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[Accelerometer], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     LOGV_IF(HANDLER_DATA, "HAL:accel data : %+f %+f %+f -- %lld - %d",
             s->acceleration.v[0], s->acceleration.v[1], s->acceleration.v[2],
             s->timestamp, update);
@@ -2663,6 +2685,7 @@ int MPLSensor::compassHandler(sensors_event_t* s)
 {
     VHANDLER_LOG;
     int update;
+    int overflow = mCompassOverFlow;
 #if defined ANDROID_LOLLIPOP
     update = inv_get_sensor_type_magnetic_field(
         s->magnetic.v, &s->magnetic.status, (inv_time_t *)(&s->timestamp));
@@ -2670,17 +2693,24 @@ int MPLSensor::compassHandler(sensors_event_t* s)
     update = inv_get_sensor_type_magnetic_field(
         s->magnetic.v, &s->magnetic.status, &s->timestamp);
 #endif
+    if (!mEnabledTime[MagneticField] || !(s->timestamp > mEnabledTime[MagneticField])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:compass incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[MagneticField], s->timestamp, android::elapsedRealtimeNano());
+        overflow = 0;
+        update = 0;
+    }
     LOGV_IF(HANDLER_DATA, "HAL:compass data: %+f %+f %+f -- %lld - %d",
             s->magnetic.v[0], s->magnetic.v[1], s->magnetic.v[2],
             s->timestamp, update);
     mCompassAccuracy = s->magnetic.status;
-    return update | mCompassOverFlow;
+    return update | overflow;
 }
 
 int MPLSensor::rawCompassHandler(sensors_event_t* s)
 {
     VHANDLER_LOG;
     int update;
+    int overflow = mCompassOverFlow;
     //TODO: need to handle uncalib data and bias for 3rd party compass
 #if defined ANDROID_LOLLIPOP
     if(mCompassSensor->providesCalibration()) {
@@ -2699,6 +2729,12 @@ int MPLSensor::rawCompassHandler(sensors_event_t* s)
                      &s->magnetic.status, &s->timestamp);
     }
 #endif
+    if (!mEnabledTime[RawMagneticField] || !(s->timestamp > mEnabledTime[RawMagneticField])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:raw compass incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[RawMagneticField], s->timestamp, android::elapsedRealtimeNano());
+        overflow = 0;
+        update = 0;
+    }
     if(update) {
         memcpy(s->uncalibrated_magnetic.bias, mCompassBias, sizeof(mCompassBias));
         LOGV_IF(HANDLER_DATA, "HAL:compass bias data: %+f %+f %+f -- %lld - %d",
@@ -2709,7 +2745,7 @@ int MPLSensor::rawCompassHandler(sensors_event_t* s)
     LOGV_IF(HANDLER_DATA, "HAL:compass raw data: %+f %+f %+f %d -- %lld - %d",
         s->uncalibrated_magnetic.uncalib[0], s->uncalibrated_magnetic.uncalib[1],
                     s->uncalibrated_magnetic.uncalib[2], s->magnetic.status, s->timestamp, update);
-    return update | mCompassOverFlow;
+    return update | overflow;
 }
 
 /*
@@ -2729,7 +2765,15 @@ int MPLSensor::rvHandler(sensors_event_t* s)
                                                  &s->timestamp);
 #endif
     s->orientation.status = status;
+
     update |= isCompassDisabled();
+
+    if (!mEnabledTime[RotationVector] || !(s->timestamp > mEnabledTime[RotationVector])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:rv incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[RotationVector], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     LOGV_IF(HANDLER_DATA, "HAL:rv data: %+f %+f %+f %+f %+f %d- %+lld - %d",
             s->data[0], s->data[1], s->data[2], s->data[3], s->data[4], s->orientation.status, s->timestamp,
             update);
@@ -2755,6 +2799,12 @@ int MPLSensor::grvHandler(sensors_event_t* s)
 #endif
     s->orientation.status = status;
 
+    if (!mEnabledTime[GameRotationVector] || !(s->timestamp > mEnabledTime[GameRotationVector])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:grv incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[GameRotationVector], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     LOGV_IF(HANDLER_DATA, "HAL:grv data: %+f %+f %+f %+f %+f %d- %+lld - %d",
             s->data[0], s->data[1], s->data[2], s->data[3], s->data[4], s->orientation.status, s->timestamp,
             update);
@@ -2773,6 +2823,13 @@ int MPLSensor::laHandler(sensors_event_t* s)
             s->gyro.v, &s->gyro.status, &s->timestamp);
 #endif
     update |= isCompassDisabled();
+
+    if (!mEnabledTime[LinearAccel] || !(s->timestamp > mEnabledTime[LinearAccel])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:la incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[LinearAccel], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     LOGV_IF(HANDLER_DATA, "HAL:la data: %+f %+f %+f - %lld - %d",
             s->gyro.v[0], s->gyro.v[1], s->gyro.v[2], s->timestamp, update);
     return update;
@@ -2790,6 +2847,13 @@ int MPLSensor::gravHandler(sensors_event_t* s)
                                          &s->timestamp);
 #endif
     update |= isCompassDisabled();
+
+    if (!mEnabledTime[Gravity] || !(s->timestamp > mEnabledTime[Gravity])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:gr incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[Gravity], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     LOGV_IF(HANDLER_DATA, "HAL:gr data: %+f %+f %+f - %lld - %d",
             s->gyro.v[0], s->gyro.v[1], s->gyro.v[2], s->timestamp, update);
     return update;
@@ -2808,6 +2872,13 @@ int MPLSensor::orienHandler(sensors_event_t* s)
 
 #endif
     update |= isCompassDisabled();
+
+    if (!mEnabledTime[Orientation] || !(s->timestamp > mEnabledTime[Orientation])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:or incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[Orientation], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     LOGV_IF(HANDLER_DATA, "HAL:or data: %f %f %f - %lld - %d",
             s->orientation.v[0], s->orientation.v[1], s->orientation.v[2],
             s->timestamp, update);
@@ -2825,9 +2896,13 @@ int MPLSensor::smHandler(sensors_event_t* s)
     s->data[2] = 0.f;
 
     /* Capture timestamp in HAL */
-    struct timespec ts;
-    clock_gettime(CLOCK_BOOTTIME, &ts);
-    s->timestamp = (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
+    s->timestamp = android::elapsedRealtimeNano();
+
+    if (!mEnabledTime[SignificantMotion] || !(s->timestamp > mEnabledTime[SignificantMotion])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:sm incorrect timestamp Enabled=%lld, Timestamp=%lld",
+                mEnabledTime[SignificantMotion], s->timestamp);
+        update = 0;
+    }
 
     LOGV_IF(HANDLER_DATA, "HAL:sm data: %f - %lld - %d",
             s->data[0], s->timestamp, update);
@@ -2839,6 +2914,7 @@ int MPLSensor::gmHandler(sensors_event_t* s)
     VHANDLER_LOG;
     int8_t status;
     int update = 0;
+
 #if defined ANDROID_LOLLIPOP
     update = inv_get_sensor_type_geomagnetic_rotation_vector(s->data, &status,
                                                              (inv_time_t *)(&s->timestamp));
@@ -2847,6 +2923,13 @@ int MPLSensor::gmHandler(sensors_event_t* s)
                                                              &s->timestamp);
 #endif
     s->orientation.status = status;
+
+    if (!mEnabledTime[GeomagneticRotationVector] || !(s->timestamp > mEnabledTime[GeomagneticRotationVector])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:gm incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[GeomagneticRotationVector], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+
     LOGV_IF(HANDLER_DATA, "HAL:gm data: %+f %+f %+f %+f %+f %d- %+lld - %d",
             s->data[0], s->data[1], s->data[2], s->data[3], s->data[4], s->orientation.status, s->timestamp, update);
     return update < 1 ? 0 :1;
@@ -2867,6 +2950,14 @@ int MPLSensor::psHandler(sensors_event_t* s)
     update = mPressureUpdate;
     mPressureUpdate = 0;
 
+#ifdef ENABLE_PRESSURE
+    if (!mEnabledTime[Pressure] || !(s->timestamp > mEnabledTime[Pressure])) {
+        LOGV_IF(ENG_VERBOSE, "HAL:ps incorrect timestamp Enabled=%lld, Timestamp=%lld, Now=%lld",
+                mEnabledTime[Pressure], s->timestamp, android::elapsedRealtimeNano());
+        update = 0;
+    }
+#endif
+
     LOGV_IF(HANDLER_DATA, "HAL:ps data: %+f %+f %+f %+f- %+lld - %d",
             s->data[0], s->data[1], s->data[2], s->data[3], s->timestamp, update);
     return update < 1 ? 0 :1;
@@ -2884,9 +2975,7 @@ int MPLSensor::sdHandler(sensors_event_t* s)
     s->data[2] = 0.f;
 
     /* get current timestamp */
-    struct timespec ts;
-    clock_gettime(CLOCK_BOOTTIME, &ts) ;
-    s->timestamp = (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+    s->timestamp =  android::elapsedRealtimeNano();
 
     LOGV_IF(HANDLER_DATA, "HAL:sd data: %f - %lld - %d",
             s->data[0], s->timestamp, update);
@@ -2910,14 +2999,7 @@ int MPLSensor::scHandler(sensors_event_t* s)
 #endif
 
     if (s->timestamp == 0 && update) {
-        struct timespec ts;
-        clock_gettime(CLOCK_BOOTTIME, &ts);
-        s->timestamp = (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
-                // workaround for some platform which has gap between monotonic clock
-                // and Android SystemClock.
-                // Subtract 100ms not to point the future for SystemClock.
-                // s->timestamp -= 100000000LL;
-        LOGV_IF(0, "HAL:sc timestamp %lld", s->timestamp);
+        s->timestamp = android::elapsedRealtimeNano();
     }
 
     return update;
@@ -2974,7 +3056,7 @@ int MPLSensor::enable(int32_t handle, int en)
     if (!en)
         mBatchEnabled &= ~(1 << handle);
 
-    LOGV_IF(ENG_VERBOSE, "HAL:handle = %d", handle);
+    LOGV_IF(ENG_VERBOSE, "HAL: MPLSensor::enable(handle = %d, en = %d)", handle, en);
 
     switch (handle) {
     case ID_SC:
@@ -2986,8 +3068,16 @@ int MPLSensor::enable(int32_t handle, int en)
                 (en? "en" : "dis"));
         enableDmpPedometer(en, 0);
         mDmpStepCountEnabled = !!en;
+        if (en)
+            mEnabledTime[StepCounter] = android::elapsedRealtimeNano();
+        else
+            mEnabledTime[StepCounter] = 0;
+
+        if (!en)
+            mBatchDelays[what] = 1000000000LL;
         return 0;
     case ID_P:
+        what = StepDetector;
         sname = "StepDetector";
         LOGV_IF(PROCESS_VERBOSE, "HAL:enable - sensor %s (handle %d) %s -> %s",
                 sname.string(), handle,
@@ -3001,6 +3091,13 @@ int MPLSensor::enable(int32_t handle, int en)
             setBatch(batchMode,1);
         }
         mOldBatchEnabledMask = batchMode;
+        if (en)
+            mEnabledTime[StepDetector] = android::elapsedRealtimeNano();
+        else
+            mEnabledTime[StepDetector] = 0;
+
+        if (!en)
+            mBatchDelays[what] = 1000000000LL;
         return 0;
     case ID_SM:
         sname = "Significant Motion";
@@ -3010,6 +3107,10 @@ int MPLSensor::enable(int32_t handle, int en)
                 (en? "en" : "dis"));
         enableDmpSignificantMotion(en);
         mDmpSignificantMotionEnabled = !!en;
+        if (en)
+            mEnabledTime[SignificantMotion] = android::elapsedRealtimeNano();
+        else
+            mEnabledTime[SignificantMotion] = 0;
         return 0;
     case ID_SO:
         sname = "Screen Orientation";
@@ -3096,6 +3197,11 @@ int MPLSensor::enable(int32_t handle, int en)
 
         mEnabled &= ~(1 << what);
         mEnabled |= (uint32_t(flags) << what);
+        if (lastEnabled > mEnabled) {
+            mEnabledCached = mEnabled;
+        } else {
+            mEnabledCached = lastEnabled;
+        }
 
         LOGV_IF(ENG_VERBOSE, "HAL:flags = %d", flags);
         computeLocalSensorMask(mEnabled);
@@ -3186,6 +3292,16 @@ int MPLSensor::enable(int32_t handle, int en)
         }
         LOGV_IF(ENG_VERBOSE, "HAL:changed = %d", changed);
         enableSensors(sen_mask, flags, changed);
+        // update mEnabledCached afer all configurations done
+        mEnabledCached = mEnabled;
+
+        if (en)
+            mEnabledTime[what] = android::elapsedRealtimeNano();
+        else
+            mEnabledTime[what] = 0;
+
+        if (!en)
+            mBatchDelays[what] = 1000000000LL;
     }
 
     // pthread_mutex_unlock(&mMplMutex);
@@ -3716,7 +3832,8 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
 {
     VHANDLER_LOG;
 
-    inv_execute_on_data();
+    if (!mSkipExecuteOnData)
+        inv_execute_on_data();
 
     int numEventReceived = 0;
 
@@ -3783,7 +3900,7 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
             }
 
             // load up virtual sensors
-            if (mEnabled & (1 << i)) {
+            if (mEnabledCached & (1 << i)) {
                 update = CALL_MEMBER_FN(this, mHandlers[i])(mPendingEvents + i);
                 mPendingMask |= (1 << i);
 
@@ -3804,16 +3921,11 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
         // handle flush complete event
         for(int k = 0; k < flush_vec_size; k++) {
             int sendEvent = metaHandler(&mPendingFlushEvents[k], META_DATA_FLUSH_COMPLETE);
-            if(sendEvent && count > 0) {
+            if (sendEvent && count > 0) {
                 *data++ = mPendingFlushEvents[k];
                 count--;
                 numEventReceived++;
             }
-        }
-
-        if (!mEmptyDataMarkerDetected) {
-            // turn off sensors in data_builder
-            resetMplStates();
         }
 
         // Double check flush status
@@ -3853,6 +3965,19 @@ void MPLSensor::buildMpuEvent(void)
     ssize_t readCounter = 0;
     char *rdataP = NULL;
     bool doneFlag = 0;
+
+    /* flush buffer when no sensors are enabled */
+    if (mEnabledCached == 0 && mBatchEnabled == 0 && mDmpPedometerEnabled == 0) {
+        rsize = read(iio_fd, rdata, MAX_SUSPEND_BATCH_PACKET_SIZE);
+        if(rsize > 0) {
+            LOGV_IF(ENG_VERBOSE, "HAL:input data flush rsize=%d", (int)rsize);
+        }
+        mLeftOverBufferSize = 0;
+        mFlushBatchSet = 1;
+        mDataMarkerDetected = 0;
+        mEmptyDataMarkerDetected = 0;
+        return;
+    }
 
     lp_quaternion_on = isLowPowerQuatEnabled() && checkLPQuaternion();
     sixAxis_quaternion_on = check6AxisQuatEnabled();
@@ -3954,6 +4079,7 @@ LOGV_IF(INPUT_DATA,
                     mFlushBatchSet = 1;
                 }
                 mEmptyDataMarkerDetected = 1;
+                mDataMarkerDetected = 1;
             }
         }
 
@@ -3985,6 +4111,7 @@ LOGV_IF(INPUT_DATA,
             sensors, lp_quaternion_on, sixAxis_quaternion_on, ped_quaternion_on,
             ped_standalone_on);
 
+    mSkipExecuteOnData = 1;
     while (readCounter > 0) {
         // since copied buffer is already accounted for, reset left over size
         mLeftOverBufferSize = 0;
@@ -4021,7 +4148,6 @@ LOGV_IF(INPUT_DATA,
                 mFlushBatchSet = 1;
             }
             mDataMarkerDetected = 1;
-            mSkipReadEvents = 1;
         }
         else if (data_format == DATA_FORMAT_EMPTY_MARKER) {
             LOGV_IF(ENG_VERBOSE && INPUT_DATA, "EMPTY MARKER DETECTED:0x%x", data_format);
@@ -4030,7 +4156,7 @@ LOGV_IF(INPUT_DATA,
                 mFlushBatchSet = 1;
             }
             mEmptyDataMarkerDetected = 1;
-            mSkipReadEvents = 1;
+            mDataMarkerDetected = 1;
         }
         else if (data_format == DATA_FORMAT_QUAT) {
             LOGV_IF(ENG_VERBOSE && INPUT_DATA, "QUAT DETECTED:0x%x", data_format);
@@ -4239,6 +4365,7 @@ LOGV_IF(INPUT_DATA,
                         "HAL:input inv_read_temperature = %lld, timestamp= %lld",
                         temperature[0], temperature[1]);
                         inv_build_temp(temperature[0], temperature[1]);
+                        mSkipExecuteOnData = 0;
                      }
 #ifdef TESTING
                     long bias[3], temp, temp_slope[3];
@@ -4266,30 +4393,30 @@ LOGV_IF(INPUT_DATA,
                    "HAL:input inv_build_gyro: %+8d %+8d %+8d - %lld",
                     mCachedGyroData[0], mCachedGyroData[1],
                     mCachedGyroData[2], mGyroSensorTimestamp);
+            mSkipExecuteOnData = 0;
             latestTimestamp = mGyroSensorTimestamp;
         }
 
         if (mask == DATA_FORMAT_ACCEL) {
-            if (mLocalSensorMask & INV_THREE_AXIS_ACCEL) {
-                mPendingMask |= 1 << Accelerometer;
-                inv_build_accel(mCachedAccelData, 0, mAccelSensorTimestamp);
-                LOGV_IF(INPUT_DATA,
-                   "HAL:input inv_build_accel: %+8ld %+8ld %+8ld - %lld",
-                    mCachedAccelData[0], mCachedAccelData[1],
-                    mCachedAccelData[2], mAccelSensorTimestamp);
-                    /* remember inital 6 axis quaternion */
-                    inv_time_t tempTimestamp;
-                    inv_get_6axis_quaternion(mInitial6QuatValue, &tempTimestamp);
-                    if (mInitial6QuatValue[0] != 0 && mInitial6QuatValue[1] != 0 &&
-                            mInitial6QuatValue[2] != 0 && mInitial6QuatValue[3] != 0) {
-                        mInitial6QuatValueAvailable = 1;
-                        LOGV_IF(INPUT_DATA && ENG_VERBOSE,
-                            "HAL:input build 6q init: %+8ld %+8ld %+8ld %+8ld",
-                            mInitial6QuatValue[0], mInitial6QuatValue[1],
-                            mInitial6QuatValue[2], mInitial6QuatValue[3]);
-                    }
-                latestTimestamp = mAccelSensorTimestamp;
+            mPendingMask |= 1 << Accelerometer;
+            inv_build_accel(mCachedAccelData, 0, mAccelSensorTimestamp);
+            LOGV_IF(INPUT_DATA,
+               "HAL:input inv_build_accel: %+8ld %+8ld %+8ld - %lld",
+                mCachedAccelData[0], mCachedAccelData[1],
+                mCachedAccelData[2], mAccelSensorTimestamp);
+            mSkipExecuteOnData = 0;
+            /* remember inital 6 axis quaternion */
+            inv_time_t tempTimestamp;
+            inv_get_6axis_quaternion(mInitial6QuatValue, &tempTimestamp);
+            if (mInitial6QuatValue[0] != 0 && mInitial6QuatValue[1] != 0 &&
+                    mInitial6QuatValue[2] != 0 && mInitial6QuatValue[3] != 0) {
+                mInitial6QuatValueAvailable = 1;
+                LOGV_IF(INPUT_DATA && ENG_VERBOSE,
+                    "HAL:input build 6q init: %+8ld %+8ld %+8ld %+8ld",
+                    mInitial6QuatValue[0], mInitial6QuatValue[1],
+                    mInitial6QuatValue[2], mInitial6QuatValue[3]);
             }
+            latestTimestamp = mAccelSensorTimestamp;
         }
 
         if (mask  == DATA_FORMAT_COMPASS_OF) {
@@ -4302,6 +4429,7 @@ LOGV_IF(INPUT_DATA,
                     "HAL:input inv_build_compass_of: %+8ld %+8ld %+8ld - %lld",
                     mCachedCompassData[0], mCachedCompassData[1],
                     mCachedCompassData[2], mCompassTimestamp);
+            mSkipExecuteOnData = 0;
             resetCompass();
         }
 
@@ -4317,6 +4445,7 @@ LOGV_IF(INPUT_DATA,
                     "HAL:input inv_build_compass: %+8ld %+8ld %+8ld - %lld",
                     mCachedCompassData[0], mCachedCompassData[1],
                     mCachedCompassData[2], mCompassTimestamp);
+            mSkipExecuteOnData = 0;
             latestTimestamp = mCompassTimestamp;
         }
 
@@ -4337,6 +4466,7 @@ LOGV_IF(INPUT_DATA,
                     mCachedQuaternionData[0], mCachedQuaternionData[1],
                     mCachedQuaternionData[2],
                     mQuatSensorTimestamp);
+            mSkipExecuteOnData = 0;
             latestTimestamp = mQuatSensorTimestamp;
         }
 
@@ -4356,6 +4486,7 @@ LOGV_IF(INPUT_DATA,
                     "HAL:input inv_build_quat-6x: %+8ld %+8ld %+8ld - %lld",
                     mCached6AxisQuaternionData[0], mCached6AxisQuaternionData[1],
                     mCached6AxisQuaternionData[2], mQuatSensorTimestamp);
+            mSkipExecuteOnData = 0;
             latestTimestamp = mQuatSensorTimestamp;
         }
 
@@ -4375,27 +4506,26 @@ LOGV_IF(INPUT_DATA,
             inv_build_quat(mCachedPedQuaternionData,
                        status,
                        mQuatSensorTimestamp);
-
             LOGV_IF(INPUT_DATA,
                     "HAL:HAL:input inv_build_quat-ped_6x: %+8ld %+8ld %+8ld - %lld",
                     mCachedPedQuaternionData[0], mCachedPedQuaternionData[1],
                     mCachedPedQuaternionData[2], mQuatSensorTimestamp);
+            mSkipExecuteOnData = 0;
             latestTimestamp = mQuatSensorTimestamp;
         }
 
 #ifdef ENABLE_PRESSURE
         if ((mask ==DATA_FORMAT_PRESSURE) && mPressureSensor->isIntegrated()) {
             int status = 0;
-            if (mLocalSensorMask & INV_ONE_AXIS_PRESSURE) {
-                latestTimestamp = mPressureTimestamp;
-                mPressureUpdate = 1;
-                inv_build_pressure(mCachedPressureData,
-                            status,
-                            mPressureTimestamp);
-                LOGV_IF(INPUT_DATA,
-                    "HAL:input inv_build_pressure: %+8ld - %lld",
-                    mCachedPressureData, mPressureTimestamp);
-            }
+            latestTimestamp = mPressureTimestamp;
+            mPressureUpdate = 1;
+            inv_build_pressure(mCachedPressureData,
+                        status,
+                        mPressureTimestamp);
+            LOGV_IF(INPUT_DATA,
+                "HAL:input inv_build_pressure: %+8ld - %lld",
+                mCachedPressureData, mPressureTimestamp);
+            mSkipExecuteOnData = 0;
         }
 #endif
         /* take the latest timestamp */
@@ -4464,15 +4594,14 @@ void MPLSensor::buildCompassEvent(void)
             status = mCompassSensor->getAccuracy();
             status |= INV_CALIBRATED;
         }
-        if (mLocalSensorMask & INV_THREE_AXIS_COMPASS) {
-            inv_build_compass(mCachedCompassData, status,
-                              mCompassTimestamp);
-            LOGV_IF(INPUT_DATA,
-                    "HAL:input inv_build_compass: %+8ld %+8ld %+8ld - %lld",
-                    mCachedCompassData[0], mCachedCompassData[1],
-                    mCachedCompassData[2], mCompassTimestamp);
-            mSkipReadEvents = 0;
-        }
+        inv_build_compass(mCachedCompassData, status,
+                          mCompassTimestamp);
+        LOGV_IF(INPUT_DATA,
+                "HAL:input inv_build_compass: %+8ld %+8ld %+8ld - %lld",
+                mCachedCompassData[0], mCachedCompassData[1],
+                mCachedCompassData[2], mCompassTimestamp);
+        mSkipReadEvents = 0;
+        mSkipExecuteOnData = 0;
     }
 
     // pthread_mutex_unlock(&mMplMutex);
@@ -4693,9 +4822,7 @@ int MPLSensor::readDmpOrientEvents(sensors_event_t* data, int count)
         temp.type = SENSOR_TYPE_SCREEN_ORIENTATION;
         temp.screen_orientation = screen_orientation;
 #endif
-        struct timespec ts;
-        clock_gettime(CLOCK_BOOTTIME, &ts);
-        temp.timestamp = (int64_t) ts.tv_sec * 1000000000 + ts.tv_nsec;
+        temp.timestamp = android::elapsedRealtimeNano();
 
         *data++ = temp;
         count--;
@@ -4763,12 +4890,11 @@ bool MPLSensor::hasStepCountPendingEvents(void)
 {
     VFUNC_LOG;
     if (mDmpStepCountEnabled) {
-        struct timespec t_now;
+        int64_t t_now_ns;
         int64_t interval = 0;
 
-        clock_gettime(CLOCK_BOOTTIME, &t_now);
-        interval = ((int64_t(t_now.tv_sec) * 1000000000LL + t_now.tv_nsec) -
-                    (int64_t(mt_pre.tv_sec) * 1000000000LL + mt_pre.tv_nsec));
+        t_now_ns = android::elapsedRealtimeNano();
+        interval = t_now_ns - mt_pre_ns;
 
         if (interval < mStepCountPollTime) {
             LOGV_IF(0,
@@ -4776,9 +4902,9 @@ bool MPLSensor::hasStepCountPendingEvents(void)
                     interval, mStepCountPollTime);
             return false;
         } else {
-            clock_gettime(CLOCK_BOOTTIME, &mt_pre);
-            LOGV_IF(0, "Step Count previous time: %ld ms",
-                    mt_pre.tv_nsec / 1000);
+            mt_pre_ns = android::elapsedRealtimeNano();
+            LOGV_IF(0, "Step Count previous time: %lld ms",
+                    mt_pre_ns / 1000000);
             return true;
         }
     }
@@ -5223,7 +5349,6 @@ int MPLSensor::inv_init_sysfs_attributes(void)
 
     // get proper (in absolute) IIO path & build MPU's sysfs paths
     inv_get_sysfs_path(sysfs_path);
-    LOGV_IF(true, "njv Invensense sysfs path : %s", sysfs_path);
 
     memcpy(mSysfsPath, sysfs_path, sizeof(sysfs_path));
     sprintf(mpu.key, "%s%s", sysfs_path, "/key");
@@ -5845,7 +5970,7 @@ int MPLSensor::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
 
     if (!timeout) {
         mBatchEnabled &= ~(1 << what);
-        mBatchDelays[what] = 1000000000L;
+        mBatchDelays[what] = 1000000000LL;
         mDelays[what] = period_ns;
         mBatchTimeouts[what] = 100000000000LL;
     } else {
