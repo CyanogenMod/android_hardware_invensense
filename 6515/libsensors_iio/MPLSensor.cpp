@@ -63,6 +63,15 @@
 
 #define MAX_SYSFS_ATTRB (sizeof(struct sysfs_attrbs) / sizeof(char*))
 
+// query path to determine if vibrator is currently vibrating
+#define VIBRATOR_ENABLE_FILE "/sys/class/timed_output/vibrator/enable"
+
+
+// Minimum time after vibrator triggers SMD before SMD can be declared valid
+// This allows 100mS for events to propogate
+#define MIN_TRIGGER_TIME_AFTER_VIBRATOR_NS 100000000
+
+
 /******************************************************************************/
 /*  MPL Interface                                                             */
 /******************************************************************************/
@@ -6490,29 +6499,46 @@ int MPLSensor::readDmpSignificantMotionEvents(sensors_event_t* data, int count)
 
     int res = 0;
     char dummy[4];
-    int significantMotion;
+    int vibrator = 0;
     FILE *fp;
     int sensors = mEnabled;
     int numEventReceived = 0;
     int update = 0;
+    static int64_t lastVibTrigger = 0;
 
-    /* Technically this step is not necessary for now  */
-    /* In the future, we may have meaningful values */
-    fp = fopen(mpu.event_smd, "r");
-    if (fp == NULL) {
-        LOGE("HAL:cannot open event_smd");
-        return 0;
-    } else {
-        if (fscanf(fp, "%d\n", &significantMotion) < 0) {
-            LOGE("HAL:cannot read event_smd");
-        }
-        if (fclose(fp) < 0) {
-            LOGE("HAL:cannot close event_smd");
-        }
-    }
+    if (mDmpSignificantMotionEnabled && count > 0) {
 
-    if(mDmpSignificantMotionEnabled && count > 0) {
-       /* By implementation, smd is disabled once an event is triggered */
+        // If vibrator is going off, ignore this event
+        fp = fopen(VIBRATOR_ENABLE_FILE, "r");
+        if (fp != NULL) {
+            if (fscanf(fp, "%d\n", &vibrator) < 0) {
+                LOGE("HAL:cannot read %s", VIBRATOR_ENABLE_FILE);
+            }
+            if (fclose(fp) < 0) {
+                LOGE("HAL:cannot close %s", VIBRATOR_ENABLE_FILE);
+            }
+            if (vibrator != 0) {
+                lastVibTrigger = android::elapsedRealtimeNano();
+                LOGV_IF(ENG_VERBOSE, "SMD triggered by vibrator, ignoring SMD event");
+                return 0;
+            } else if (lastVibTrigger) {
+                // vibrator recently triggered SMD, discard related events
+                int64_t now = android::elapsedRealtimeNano();
+		if ((now - lastVibTrigger) < MIN_TRIGGER_TIME_AFTER_VIBRATOR_NS) {
+                    LOGV_IF(ENG_VERBOSE, "HAL: SMD triggered too close to vibrator (delta %lldnS), ignoring",
+                            (now-lastVibTrigger));
+                    return 0;
+                } else {
+                    LOGV_IF(ENG_VERBOSE, "HAL: SMD triggered %lld after vibrator (last %lld now %lld)",
+                            now-lastVibTrigger, lastVibTrigger, now);
+                    lastVibTrigger = 0;
+                }
+            }
+        } else {
+            LOGE("HAL:cannot open %s", VIBRATOR_ENABLE_FILE);
+        }
+
+        /* By implementation, smd is disabled once an event is triggered */
         sensors_event_t temp;
 
         /* Handles return event */
