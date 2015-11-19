@@ -178,6 +178,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     memset(mInitial6QuatValue, 0, sizeof(mInitial6QuatValue));
     mFlushSensorEnabledVector.setCapacity(NumSensors);
     memset(mEnabledTime, 0, sizeof(mEnabledTime));
+    memset(mLastTimestamp, 0, sizeof(mLastTimestamp));
 
     /* setup sysfs paths */
     inv_init_sysfs_attributes();
@@ -3896,9 +3897,15 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
                     update = readDmpPedometerEvents(data, count, ID_P, 1);
                     mPedUpdate = 0;
                     if(update == 1 && count > 0) {
-                        data->timestamp = mStepSensorTimestamp;
-                        count--;
-                        numEventReceived++;
+                        if (mLastTimestamp[i] != mStepSensorTimestamp) {
+                            count--;
+                            numEventReceived++;
+                            data->timestamp = mStepSensorTimestamp;
+                            mLastTimestamp[i] = mStepSensorTimestamp;
+                        } else {
+                            ALOGE("Event from type=%d with duplicate timestamp %lld discarded",
+                                    mPendingEvents[i].type, mStepSensorTimestamp);
+                        }
                         continue;
                     }
                 } else {
@@ -3914,9 +3921,16 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
                 mPendingMask |= (1 << i);
 
                 if (update && (count > 0)) {
-                    *data++ = mPendingEvents[i];
-                    count--;
-                    numEventReceived++;
+                    // Discard any events with duplicate timestamps
+                    if (mLastTimestamp[i] != mPendingEvents[i].timestamp) {
+                        mLastTimestamp[i] = mPendingEvents[i].timestamp;
+                        *data++ = mPendingEvents[i];
+                        count--;
+                        numEventReceived++;
+                    } else {
+                        ALOGE("Event from type=%d with duplicate timestamp %lld discarded",
+                                    mPendingEvents[i].type, mStepSensorTimestamp);
+                    }
                 }
             }
         }
