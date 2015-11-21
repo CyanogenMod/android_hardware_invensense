@@ -370,6 +370,7 @@ protected:
     int64_t mBatchTimeouts[NumSensors];
     hfunc_t mHandlers[NumSensors];
     int64_t mEnabledTime[NumSensors];
+    int64_t mLastTimestamp[NumSensors];
     short mCachedGyroData[3];
     long mCachedAccelData[3];
     long mCachedCompassData[3];
