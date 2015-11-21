@@ -173,6 +173,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
 
     pthread_mutex_init(&mMplMutex, NULL);
     pthread_mutex_init(&mHALMutex, NULL);
+    mFlushBatchSet = 0;
     memset(mGyroOrientation, 0, sizeof(mGyroOrientation));
     memset(mAccelOrientation, 0, sizeof(mAccelOrientation));
     memset(mInitial6QuatValue, 0, sizeof(mInitial6QuatValue));
@@ -3030,10 +3031,10 @@ int MPLSensor::metaHandler(sensors_event_t* s, int flags)
     switch(flags) {
     case META_DATA_FLUSH_COMPLETE:
         s->type = SENSOR_TYPE_META_DATA;
+        s->version = META_DATA_VERSION;
         s->meta_data.what = flags;
         s->meta_data.sensor = mFlushSensorEnabledVector[0];
         mFlushSensorEnabledVector.removeAt(0);
-        //mFlushBatchSet = 0;
         LOGV_IF(HANDLER_DATA,
                 "HAL:flush complete data: type=%d what=%d, "
                 "sensor=%d - %lld - %d",
@@ -3939,27 +3940,33 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
 
     // handle partial packet read and end marker
     // skip readEvents from hal_outputs
-    int flush_vec_size = mFlushSensorEnabledVector.size();
-    if (flush_vec_size && mDataMarkerDetected && mFlushBatchSet) {
-        // handle flush complete event
-        for(int k = 0; k < flush_vec_size; k++) {
-            int sendEvent = metaHandler(&mPendingFlushEvents[k], META_DATA_FLUSH_COMPLETE);
-            if (sendEvent && count > 0) {
-                *data++ = mPendingFlushEvents[k];
+    if (mFlushBatchSet && count>0 && !mFlushSensorEnabledVector.isEmpty()) {
+        while (mFlushBatchSet && count>0 && !mFlushSensorEnabledVector.isEmpty()) {
+            int sendEvent = metaHandler(&mPendingFlushEvents[0], META_DATA_FLUSH_COMPLETE);
+            if (sendEvent) {
+                LOGV_IF(ENG_VERBOSE, "Queueing flush complete for handle=%d",
+                        mPendingFlushEvents[0].meta_data.sensor);
+                *data++ = mPendingFlushEvents[0];
                 count--;
                 numEventReceived++;
+            } else {
+                LOGV_IF(ENG_VERBOSE, "sendEvent false, NOT queueing flush complete for handle=%d",
+                        mPendingFlushEvents[0].meta_data.sensor);
             }
+            mFlushBatchSet--;
         }
 
         // Double check flush status
         if (mFlushSensorEnabledVector.isEmpty()) {
-			mEmptyDataMarkerDetected = 0;
+            mEmptyDataMarkerDetected = 0;
             mDataMarkerDetected = 0;
-			mFlushBatchSet = 0;
-            LOGV_IF(0, "Flush completed");
+            mFlushBatchSet = 0;
+            LOGV_IF(ENG_VERBOSE, "Flush completed");
         } else {
-            LOGV_IF(0, "Flush is still active");
+            LOGV_IF(ENG_VERBOSE, "Flush is still active");
         }
+    } else if (mFlushBatchSet && mFlushSensorEnabledVector.isEmpty()) {
+        mFlushBatchSet = 0;
     }
 
     return numEventReceived;
@@ -3996,7 +4003,6 @@ void MPLSensor::buildMpuEvent(void)
             LOGV_IF(ENG_VERBOSE, "HAL:input data flush rsize=%d", (int)rsize);
         }
         mLeftOverBufferSize = 0;
-        mFlushBatchSet = 1;
         mDataMarkerDetected = 0;
         mEmptyDataMarkerDetected = 0;
         return;
@@ -4090,7 +4096,7 @@ LOGV_IF(INPUT_DATA,
                 readCounter -= BYTES_PER_SENSOR;
                 rdata += BYTES_PER_SENSOR;
                 if (!mFlushSensorEnabledVector.isEmpty()) {
-                    mFlushBatchSet = 1;
+                    mFlushBatchSet++;
                 }
                 mDataMarkerDetected = 1;
             }
@@ -4099,7 +4105,7 @@ LOGV_IF(INPUT_DATA,
                 readCounter -= BYTES_PER_SENSOR;
                 rdata += BYTES_PER_SENSOR;
                 if (!mFlushSensorEnabledVector.isEmpty()) {
-                    mFlushBatchSet = 1;
+                    mFlushBatchSet++;
                 }
                 mEmptyDataMarkerDetected = 1;
                 mDataMarkerDetected = 1;
@@ -4168,7 +4174,7 @@ LOGV_IF(INPUT_DATA,
             LOGV_IF(ENG_VERBOSE && INPUT_DATA, "MARKER DETECTED:0x%x", data_format);
             readCounter -= BYTES_PER_SENSOR;
             if (!mFlushSensorEnabledVector.isEmpty()) {
-                mFlushBatchSet = 1;
+                mFlushBatchSet++;
             }
             mDataMarkerDetected = 1;
         }
@@ -4176,7 +4182,7 @@ LOGV_IF(INPUT_DATA,
             LOGV_IF(ENG_VERBOSE && INPUT_DATA, "EMPTY MARKER DETECTED:0x%x", data_format);
             readCounter -= BYTES_PER_SENSOR;
             if (!mFlushSensorEnabledVector.isEmpty()) {
-                mFlushBatchSet = 1;
+                mFlushBatchSet++;
             }
             mEmptyDataMarkerDetected = 1;
             mDataMarkerDetected = 1;
@@ -4345,7 +4351,7 @@ LOGV_IF(INPUT_DATA,
 				rdata += BYTES_PER_SENSOR;
 				readCounter -= BYTES_PER_SENSOR;
 				if (!mFlushSensorEnabledVector.isEmpty()) {
-					mFlushBatchSet = 1;
+					mFlushBatchSet++;
 				}
 				mDataMarkerDetected = 1;
 				if (readCounter == 0) {
@@ -6253,7 +6259,6 @@ int MPLSensor::flush(int handle)
     }
 
     mFlushSensorEnabledVector.push_back(handle);
-    mFlushBatchSet = 0;
 
     /*write sysfs */
     LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:cat %s (%lld)",

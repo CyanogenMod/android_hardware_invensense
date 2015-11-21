@@ -538,7 +538,7 @@ protected:
     char mLeftOverBuffer[1024];
     bool mInitial6QuatValueAvailable;
     long mInitial6QuatValue[4];
-    bool mFlushBatchSet;
+    int mFlushBatchSet;
     uint32_t mSkipReadEvents;
     uint32_t mSkipExecuteOnData;
     bool mDataMarkerDetected;
