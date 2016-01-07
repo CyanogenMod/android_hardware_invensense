@@ -3902,6 +3902,7 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
                             count--;
                             numEventReceived++;
                             data->timestamp = mStepSensorTimestamp;
+                            data++;
                             mLastTimestamp[i] = mStepSensorTimestamp;
                         } else {
                             ALOGE("Event from type=%d with duplicate timestamp %lld discarded",
@@ -4565,6 +4566,9 @@ LOGV_IF(INPUT_DATA,
                 LOGV_IF(INPUT_DATA,
                     "HAL:input build step: 1 - %lld", mStepSensorTimestamp);
             } else {
+                LOGV_IF(ENG_VERBOSE, "Step data OUT OF ORDER, "
+                        "mPedUpdate = 0x%x last = %lld, ts = %lld",
+                        mPedUpdate, mStepSensorTimestamp, latestTimestamp);
                 mPedUpdate = 0;
             }
         }
