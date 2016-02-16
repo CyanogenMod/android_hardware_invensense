@@ -244,7 +244,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
     if(fd < 0) {
         LOGE("HAL:Error opening gyro self test scale");
     } else {
-        memset(gyroBuf, 0, sizeof(gyroBuf));
+        memset(gyroScale, 0, sizeof(gyroScale));
         count = read_attribute_sensor(fd, gyroScale, sizeof(gyroScale));
         if(count < 1) {
             LOGE("HAL:Error reading gyro self test scale");
@@ -323,7 +323,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
         if(fd < 0) {
             LOGE("HAL:Error opening gyro self test scale");
         } else {
-            memset(buf, 0, sizeof(buf));
+            memset(accelScale, 0, sizeof(accelScale));
             count = read_attribute_sensor(fd, accelScale, sizeof(accelScale));
             if(count < 1) {
                 LOGE("HAL:Error reading accel self test scale");
@@ -377,13 +377,13 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
         LOGV_IF(ENG_VERBOSE,
                 "HAL:dmp_sign_motion_fd opened : %d", dmp_sign_motion_fd);
     }
-#if 1
+
     /* the following threshold can be modified for SMD sensitivity */
     int motionThreshold = 3000;
     LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
                 motionThreshold, mpu.smd_threshold, getTimestamp());
         res = write_sysfs_int(mpu.smd_threshold, motionThreshold);
-#endif
+
 #if 0
     int StepCounterThreshold = 5;
     LOGV_IF(SYSFS_VERBOSE, "HAL:sysfs:echo %d > %s (%lld)",
@@ -419,7 +419,7 @@ MPLSensor::MPLSensor(CompassSensor *compass, int (*m_pt2AccelCalLoadFunc)(long *
 
     /* initialize sensor data */
     memset(mPendingEvents, 0, sizeof(mPendingEvents));
-    memset(mPendingFlushEvents, 0, sizeof(mPendingEvents));
+    memset(mPendingFlushEvents, 0, sizeof(mPendingFlushEvents));
 
     mPendingEvents[RotationVector].version = sizeof(sensors_event_t);
     mPendingEvents[RotationVector].sensor = ID_RV;
@@ -978,13 +978,13 @@ MPLSensor::~MPLSensor()
     }
 
     if (gyro_x_offset_fd > 0) {
-        close(gyro_x_dmp_bias_fd);
+        close(gyro_x_offset_fd);
     }
     if (gyro_y_offset_fd > 0) {
         close(gyro_y_offset_fd);
     }
     if (gyro_z_offset_fd > 0) {
-        close(accel_z_offset_fd);
+        close(gyro_z_offset_fd);
     }
 
     /* Turn off Gyro master enable          */
@@ -2391,7 +2391,7 @@ int MPLSensor::computeBatchSensorMask(int enableSensors, int tempBatchSensor)
     }
 
     // if virtual sensors are on but not batched, turn off batch mode.
-    for(int i = Orientation; i <= GeomagneticRotationVector; i++) {
+    for(int i = Orientation; i < NumSensors; i++) {
         if ((enableSensors & (1 << i)) && !(tempBatchSensor & (1 << i))) {
              LOGV_IF(ENG_VERBOSE, "HAL:computeBatchSensorMask: "
                      "composite sensor on continuous mode:%d", i);
@@ -2400,7 +2400,7 @@ int MPLSensor::computeBatchSensorMask(int enableSensors, int tempBatchSensor)
     }
 
     if ((mFeatureActiveMask & INV_DMP_PEDOMETER) && !(tempBatchSensor & (1 << StepDetector))) {
-        LOGV("HAL:computeBatchSensorMask: step detector on continuous mode.");
+        LOGV_IF(ENG_VERBOSE, "HAL:computeBatchSensorMask: step detector on continuous mode.");
         return 0;
     }
 
@@ -3847,8 +3847,11 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
         inv_execute_on_data();
 
     int numEventReceived = 0;
-
     long msg;
+
+    if (count <= 0)
+        return 0;
+
     msg = inv_get_message_level_0(1);
     if (msg) {
         if (msg & INV_MSG_MOTION_EVENT) {
@@ -3930,46 +3933,45 @@ int MPLSensor::readEvents(sensors_event_t* data, int count)
                         count--;
                         numEventReceived++;
                     } else {
-                        ALOGE("Event from type=%d with duplicate timestamp %lld discarded",
-                                    mPendingEvents[i].type, mStepSensorTimestamp);
+                        ALOGE("Event from type=%d with duplicate timestamp %lld (%+f, %+f, %+f) discarded",
+                                    mPendingEvents[i].type, mLastTimestamp[i], mPendingEvents[i].data[0], mPendingEvents[i].data[1], mPendingEvents[i].data[2]);
                     }
                 }
             }
-        }
-        mCompassOverFlow = 0;
-    }
+            mCompassOverFlow = 0;
 
-    // handle partial packet read and end marker
-    // skip readEvents from hal_outputs
-    if (mFlushBatchSet && count>0 && !mFlushSensorEnabledVector.isEmpty()) {
-        while (mFlushBatchSet && count>0 && !mFlushSensorEnabledVector.isEmpty()) {
-            int sendEvent = metaHandler(&mPendingFlushEvents[0], META_DATA_FLUSH_COMPLETE);
-            if (sendEvent) {
-                LOGV_IF(ENG_VERBOSE, "Queueing flush complete for handle=%d",
-                        mPendingFlushEvents[0].meta_data.sensor);
-                *data++ = mPendingFlushEvents[0];
-                count--;
-                numEventReceived++;
-            } else {
-                LOGV_IF(ENG_VERBOSE, "sendEvent false, NOT queueing flush complete for handle=%d",
-                        mPendingFlushEvents[0].meta_data.sensor);
+            // handle partial packet read and end marker
+            // skip readEvents from hal_outputs
+            if (mFlushBatchSet && count>0 && !mFlushSensorEnabledVector.isEmpty()) {
+                while (mFlushBatchSet && count>0 && !mFlushSensorEnabledVector.isEmpty()) {
+                    int sendEvent = metaHandler(&mPendingFlushEvents[0], META_DATA_FLUSH_COMPLETE);
+                    if (sendEvent) {
+                        LOGV_IF(ENG_VERBOSE, "Queueing flush complete for handle=%d",
+                                mPendingFlushEvents[0].meta_data.sensor);
+                        *data++ = mPendingFlushEvents[0];
+                        count--;
+                        numEventReceived++;
+                    } else {
+                        LOGV_IF(ENG_VERBOSE, "sendEvent false, NOT queueing flush complete for handle=%d",
+                                mPendingFlushEvents[0].meta_data.sensor);
+                    }
+                    mFlushBatchSet--;
+                }
+
+                // Double check flush status
+                if (mFlushSensorEnabledVector.isEmpty()) {
+                    mEmptyDataMarkerDetected = 0;
+                    mDataMarkerDetected = 0;
+                    mFlushBatchSet = 0;
+                    LOGV_IF(ENG_VERBOSE, "Flush completed");
+                } else {
+                    LOGV_IF(ENG_VERBOSE, "Flush is still active");
+                }
+            } else if (mFlushBatchSet && mFlushSensorEnabledVector.isEmpty()) {
+                mFlushBatchSet = 0;
             }
-            mFlushBatchSet--;
         }
-
-        // Double check flush status
-        if (mFlushSensorEnabledVector.isEmpty()) {
-            mEmptyDataMarkerDetected = 0;
-            mDataMarkerDetected = 0;
-            mFlushBatchSet = 0;
-            LOGV_IF(ENG_VERBOSE, "Flush completed");
-        } else {
-            LOGV_IF(ENG_VERBOSE, "Flush is still active");
-        }
-    } else if (mFlushBatchSet && mFlushSensorEnabledVector.isEmpty()) {
-        mFlushBatchSet = 0;
     }
-
     return numEventReceived;
 }
 
@@ -6065,7 +6067,7 @@ int MPLSensor::batch(int handle, int flags, int64_t period_ns, int64_t timeout)
     } else {
         if (calctDataRates(&tmp_reset_rate, &tmp_gyro_rate, &tmp_accel_rate, &tmp_compass_rate, &tmp_pressure_rate) < 0) {
             skip_reset_data_rate = true;
-            LOGW("HAL:ERR can't get output rate back to original setting");
+            LOGV_IF(ENG_VERBOSE, "HAL:ERR can't get output rate back to original setting");
         }
         if (tmp_reset_rate != mResetRate)
             master_enable_call++;
@@ -6275,7 +6277,7 @@ int MPLSensor::flush(int handle)
 
     /* driver returns 0 if FIFO is empty */
     if (res == 0) {
-        LOGI("HAL: flush - no data in FIFO");
+        LOGV_IF(ENG_VERBOSE, "HAL: flush - no data in FIFO");
     }
 
     LOGV_IF(ENG_VERBOSE, "HAl:flush - mFlushSensorEnabledVector=%d res=%d status=%d", handle, res, status);
@@ -6447,7 +6449,7 @@ int MPLSensor::readDmpPedometerEvents(sensors_event_t* data, int count,
                 LOGE("HAL:cannot open pedometer_steps");
             } else {
                 if (fscanf(fp, "%lld\n", &stepCount) < 0) {
-                    LOGW("HAL:cannot read pedometer_steps");
+                    LOGV_IF(PROCESS_VERBOSE, "HAL:cannot read pedometer_steps");
                     if (fclose(fp) < 0) {
                        LOGW("HAL:cannot close pedometer_steps");
                     }
