@@ -32,16 +32,17 @@
 
 #include <utils/Atomic.h>
 #include <utils/Log.h>
+#include <utils/SystemClock.h>
 
 #include "sensors.h"
 #include "MPLSensor.h"
 
-/* 
- * Vendor-defined Accel Load Calibration File Method 
+/*
+ * Vendor-defined Accel Load Calibration File Method
  * @param[out] Accel bias, length 3.  In HW units scaled by 2^16 in body frame
  * @return '0' for a successful load, '1' otherwise
  * example: int AccelLoadConfig(long* offset);
- * End of Vendor-defined Accel Load Cal Method 
+ * End of Vendor-defined Accel Load Cal Method
  */
 
 /*****************************************************************************/
@@ -81,6 +82,14 @@ static struct hw_module_methods_t sensors_module_methods = {
         open: open_sensors
 };
 
+static int sensors_set_operation_mode(unsigned int mode)
+{
+    LOGI("%s", __FUNCTION__);
+    LOGI("%s: stub function: ignoring mode request (%d)", __FUNCTION__,
+                 mode);
+    return 0;
+}
+
 struct sensors_module_t HAL_MODULE_INFO_SYM = {
         common: {
                 tag: HARDWARE_MODULE_TAG,
@@ -94,6 +103,7 @@ struct sensors_module_t HAL_MODULE_INFO_SYM = {
                 reserved: {0}
         },
         get_sensors_list: sensors__get_sensors_list,
+        set_operation_mode: sensors_set_operation_mode
 };
 
 struct sensors_poll_context_t {
@@ -109,6 +119,7 @@ struct sensors_poll_context_t {
 #if defined ANDROID_KITKAT || defined ANDROID_LOLLIPOP
     int flush(int handle);
 #endif
+    int64_t getTimestamp();
 
 private:
     enum {
@@ -127,7 +138,6 @@ private:
 
     /* Significant Motion wakelock support */
     bool mSMDWakelockHeld;
-
 };
 
 /******************************************************************************/
@@ -144,7 +154,7 @@ sensors_poll_context_t::sensors_poll_context_t() {
 
    /* For Vendor-defined Accel Calibration File Load
     * Use the Following Constructor and Pass Your Load Cal File Function
-    * 
+    *
     * MPLSensor *mplSensor = new MPLSensor(mCompassSensor, AccelLoadConfig);
     */
 
@@ -174,7 +184,7 @@ sensors_poll_context_t::sensors_poll_context_t() {
 
     mPollFds[dmpPed].fd = ((MPLSensor*) mSensor)->getDmpPedometerFd();
     mPollFds[dmpPed].events = POLLPRI;
-    mPollFds[dmpPed].revents = 0;   
+    mPollFds[dmpPed].revents = 0;
 }
 
 sensors_poll_context_t::~sensors_poll_context_t() {
@@ -190,7 +200,7 @@ int sensors_poll_context_t::activate(int handle, int enabled) {
     FUNC_LOG;
 
     int err;
-    err = mSensor->enable(handle, enabled);   
+    err = mSensor->enable(handle, enabled);
     return err;
 }
 
@@ -198,6 +208,11 @@ int sensors_poll_context_t::setDelay(int handle, int64_t ns)
 {
     FUNC_LOG;
     return mSensor->setDelay(handle, ns);
+}
+
+int64_t sensors_poll_context_t::getTimestamp()
+{
+    return android::elapsedRealtimeNano();
 }
 
 int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
@@ -234,7 +249,7 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
 
     // look for new events
     nb = poll(mPollFds, numSensorDrivers, polltime);
-    LOGI_IF(0, "poll nb=%d, count=%d, pt=%d", nb, count, polltime);
+    LOGI_IF(0, "poll nb=%d, count=%d, pt=%d ts=%lld", nb, count, polltime, getTimestamp());
     if (nb > 0) {
         for (int i = 0; count && i < numSensorDrivers; i++) {
             if (mPollFds[i].revents & (POLLIN | POLLPRI)) {
@@ -283,7 +298,7 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
                     LOGI_IF(0, "sensors_mpl:readEvents() - "
                             "i=%d, nb=%d, count=%d, nbEvents=%d, "
                             "data->timestamp=%lld, data->data[0]=%f,",
-                            i, nb, count, nbEvents, data->timestamp, 
+                            i, nb, count, nbEvents, data->timestamp,
                             data->data[0]);
                     if (nb > 0) {
                         count -= nb;
@@ -333,7 +348,7 @@ int sensors_poll_context_t::query(int what, int* value)
     return mSensor->query(what, value);
 }
 
-int sensors_poll_context_t::batch(int handle, int flags, int64_t period_ns, 
+int sensors_poll_context_t::batch(int handle, int flags, int64_t period_ns,
                                   int64_t timeout)
 {
     FUNC_LOG;
