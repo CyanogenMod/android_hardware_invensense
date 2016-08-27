@@ -250,7 +250,21 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
     // look for new events
     nb = poll(mPollFds, numSensorDrivers, polltime);
     LOGI_IF(0, "poll nb=%d, count=%d, pt=%d ts=%lld", nb, count, polltime, getTimestamp());
-    if (nb > 0) {
+    if (nb == 0 && count > 0) {
+        /* to see if any step counter events */
+        if(((MPLSensor*) mSensor)->hasStepCountPendingEvents() == true) {
+            nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(
+                            data, count, ID_SC, 0);
+            LOGI_IF(SensorBase::HANDLER_DATA, "sensors_mpl:readStepCount() - "
+                    "nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, ",
+                    nb, count, nbEvents, data->timestamp);
+            if (nb > 0) {
+                count -= nb;
+                nbEvents += nb;
+                data += nb;
+            }
+        }
+    } else while (nb > 0) {
         for (int i = 0; count && i < numSensorDrivers; i++) {
             if (mPollFds[i].revents & (POLLIN | POLLPRI)) {
                 nb = 0;
@@ -293,6 +307,7 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
                     nbEvents += nb;
                     data += nb;
                 }
+
                 if(nb == 0) {
                     nb = ((MPLSensor*) mSensor)->readEvents(data, count);
                     LOGI_IF(0, "sensors_mpl:readEvents() - "
@@ -323,20 +338,11 @@ int sensors_poll_context_t::pollEvents(sensors_event_t *data, int count)
                 data += nb;
             }
         }
-    } else if(nb == 0) {
-        /* to see if any step counter events */
-        if(((MPLSensor*) mSensor)->hasStepCountPendingEvents() == true) {
+        if (count > 0) {
+            // We still have room for more events, try an immediate poll for more data
+            nb = poll(mPollFds, numSensorDrivers, 0);
+        } else {
             nb = 0;
-            nb = ((MPLSensor*) mSensor)->readDmpPedometerEvents(
-                            data, count, ID_SC, 0);
-            LOGI_IF(SensorBase::HANDLER_DATA, "sensors_mpl:readStepCount() - "
-                    "nb=%d, count=%d, nbEvents=%d, data->timestamp=%lld, ",
-                    nb, count, nbEvents, data->timestamp);
-            if (nb > 0) {
-                count -= nb;
-                nbEvents += nb;
-                data += nb;
-            }
         }
     }
     return nbEvents;
